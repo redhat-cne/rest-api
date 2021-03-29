@@ -44,7 +44,7 @@ func TestServer_New(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		server.Start()
+		server.Start(&wg)
 	}()
 	wg.Add(1)
 	go func() {

@@ -5,6 +5,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	"github.com/redhat-cne/sdk-go/v1/pubsub"
+	"sync"
 
 	"io"
 	"log"
@@ -45,7 +46,8 @@ func (s *Server) Port() int {
 }
 
 // Start will start res routes service
-func (s *Server) Start() {
+func (s *Server) Start(wg *sync.WaitGroup) {
+	defer wg.Done()
 	r := mux.NewRouter()
 	api := r.PathPrefix(s.apiPath).Subrouter()
 
