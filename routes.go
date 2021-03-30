@@ -3,6 +3,7 @@ package restapi
 import (
 	"encoding/json"
 	"fmt"
+
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	ce "github.com/cloudevents/sdk-go/v2/event"
 
@@ -92,14 +93,6 @@ func (s *Server) CreateSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err != nil {
-		log.Printf("Error writing to store %v\n", err)
-		respondWithError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	// go ahead and create QDR to this address
-	s.sendOut(channel.LISTENER, &newSub)
 	respondWithJSON(w, http.StatusCreated, newSub)
 }
 
@@ -141,12 +134,6 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	if err != nil {
-		log.Printf("Error writing to store %v\n", err)
-		respondWithError(w, http.StatusBadRequest, err.Error())
-		return
-	}
 	// go ahead and create QDR to this address
 	s.sendOut(channel.SENDER, &newPub)
 	respondWithJSON(w, http.StatusCreated, newPub)
@@ -154,7 +141,7 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) sendOut(eType channel.Type, sub *pubsub.PubSub) {
 	// go ahead and create QDR to this address
-	s.dataOut <- channel.DataChan{
+	s.dataOut <- &channel.DataChan{
 		Address: sub.GetResource(),
 		Data:    &ce.Event{},
 		Type:    eType,
@@ -255,7 +242,8 @@ func (s *Server) deleteAllPublishers(w http.ResponseWriter, r *http.Request) {
 	respondWithMessage(w, http.StatusOK, "deleted all publishers")
 }
 
-//publishEvent gets cloud native events and converts it to cloud native event
+//publishEvent gets cloud native events and converts it to cloud native event and publishes to a transport to send
+//it to the consumer
 func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	bodyBytes, err := ioutil.ReadAll(r.Body)
@@ -278,7 +266,7 @@ func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, err.Error())
 	} else {
-		s.dataOut <- channel.DataChan{
+		s.dataOut <- &channel.DataChan{
 			Type:    channel.EVENT,
 			Data:    ceEvent,
 			Address: pub.GetResource(),

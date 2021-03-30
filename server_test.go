@@ -4,12 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/redhat-cne/rest-api"
-	"github.com/redhat-cne/sdk-go/pkg/channel"
-	"github.com/redhat-cne/sdk-go/pkg/pubsub"
-	"github.com/redhat-cne/sdk-go/pkg/types"
-	api "github.com/redhat-cne/sdk-go/v1/pubsub"
-	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -17,12 +11,19 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/redhat-cne/rest-api"
+	"github.com/redhat-cne/sdk-go/pkg/channel"
+	"github.com/redhat-cne/sdk-go/pkg/pubsub"
+	"github.com/redhat-cne/sdk-go/pkg/types"
+	api "github.com/redhat-cne/sdk-go/v1/pubsub"
+	"github.com/stretchr/testify/assert"
 )
 
 var (
 	server *restapi.Server
 
-	eventOutCh chan channel.DataChan
+	eventOutCh chan *channel.DataChan
 	closeCh    chan bool
 	wg         sync.WaitGroup
 	port       int    = 8080
@@ -32,14 +33,14 @@ var (
 
 func init() {
 
-	eventOutCh = make(chan channel.DataChan, 10)
+	eventOutCh = make(chan *channel.DataChan, 10)
 	closeCh = make(chan bool)
 
 }
 
 func TestServer_New(t *testing.T) {
 
-	server = restapi.InitServer(port, apPath, storePath, eventOutCh)
+	server = restapi.InitServer(port, apPath, storePath, eventOutCh, closeCh)
 	//start http server
 	wg.Add(1)
 	go func() {

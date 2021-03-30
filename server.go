@@ -18,17 +18,19 @@ import (
 type Server struct {
 	port       int
 	apiPath    string
-	dataOut    chan<- channel.DataChan
+	dataOut    chan<- *channel.DataChan
+	close <-chan bool
 	HTTPClient *http.Client
 	pubSubAPI  *pubsub.API
 }
 
 // InitServer is used to supply configurations for rest routes server
-func InitServer(port int, apiPath, storePath string, dataOut chan<- channel.DataChan) *Server {
+func InitServer(port int, apiPath, storePath string, dataOut chan<- *channel.DataChan, close <-chan bool) *Server {
 	server := Server{
 		port:    port,
 		apiPath: apiPath,
 		dataOut: dataOut,
+		close: close,
 		HTTPClient: &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConnsPerHost: 20,
@@ -45,6 +47,10 @@ func (s *Server) Port() int {
 	return s.port
 }
 
+//GetHostPath ...
+func (s *Server) GetHostPath() string{
+	return fmt.Sprintf("http://localhost:%d%s",s.port,s.apiPath)
+}
 // Start will start res routes service
 func (s *Server) Start(wg *sync.WaitGroup) {
 	defer wg.Done()
@@ -114,30 +120,30 @@ func (s *Server) Start(wg *sync.WaitGroup) {
 	err := r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
 		pathTemplate, err := route.GetPathTemplate()
 		if err == nil {
-			fmt.Println("ROUTE:", pathTemplate)
+			log.Println("ROUTE:", pathTemplate)
 		}
 		pathRegexp, err := route.GetPathRegexp()
 		if err == nil {
-			fmt.Println("Path regexp:", pathRegexp)
+			log.Println("Path regexp:", pathRegexp)
 		}
 		queriesTemplates, err := route.GetQueriesTemplates()
 		if err == nil {
-			fmt.Println("Queries templates:", strings.Join(queriesTemplates, ","))
+			log.Println("Queries templates:", strings.Join(queriesTemplates, ","))
 		}
 		queriesRegexps, err := route.GetQueriesRegexp()
 		if err == nil {
-			fmt.Println("Queries regexps:", strings.Join(queriesRegexps, ","))
+			log.Println("Queries regexps:", strings.Join(queriesRegexps, ","))
 		}
 		methods, err := route.GetMethods()
 		if err == nil {
-			fmt.Println("Methods:", strings.Join(methods, ","))
+			log.Println("Methods:", strings.Join(methods, ","))
 		}
-		fmt.Println()
+		log.Println()
 		return nil
 	})
 
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 	api.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, r)
