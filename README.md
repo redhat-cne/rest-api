@@ -35,7 +35,7 @@ If publisher creation is success(or if already exists), publisher will be return
 
 | Name | Located in | Description | Required | Schema |
 | ---- | ---------- | ----------- | -------- | ---- |
-| publisher | body | publisher to add to the list of publishers | No | [PubSub](#pubsub) |
+| publisher | body | publisher to add to the list of publishers | yes | [PubSub](#pubsub) |
 
 ##### Responses
 
@@ -59,7 +59,7 @@ If subscription creation is success(or if already exists), subscription will be 
 
 | Name | Located in | Description | Required | Schema |
 | ---- | ---------- | ----------- | -------- | ---- |
-| subscription | body | subscription to add to the list of subscriptions | No | [PubSub](#pubsub) |
+| subscription | body | subscription to add to the list of subscriptions | yes | [PubSub](#pubsub) |
 
 ##### Responses
 
@@ -200,10 +200,9 @@ PubSub request model
 
 | Name | Type | Description | Required |
 | ---- | ---- | ----------- | -------- |
-| endpointUri | [URI](#uri) |  | No |
-| id | string | ID of the pub/sub; is updated on successful creation of publisher/subscription. | No |
-| resource | string | Resource - The type of the Resource. +required | No |
-| uriLocation | [URI](#uri) |  | No |
+| endpointUri | [URI](#uri) |  | yes |
+| resource | string | Resource - The type of the Resource. +required | yes |
+
 
 #### Timestamp
 
