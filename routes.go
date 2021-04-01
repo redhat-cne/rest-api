@@ -21,40 +21,14 @@ import (
 	"net/http"
 )
 
-//createSubscription The POST method creates a subscription resource for the (Event) API consumer.
-// SubscriptionInfo  status 201
-// Shall be returned when the subscription resource created successfully.
-/*Request
-   {
-	"ResourceType": "ptp",
-	"SourceAddress":"/cluster-x/worker-1/SYNC/ptp",
-    "EndpointURI ": "http://localhost:9090/resourcestatus/ptp", /// daemon
-	"ResourceQualifier": {
-			"NodeName":"worker-1"
-		}
-	}
-Response:
-		{
-		//"SubscriptionID": "789be75d-7ac3-472e-bbbc-6d62878aad4a",
-        "PublisherId": "789be75d-7ac3-472e-bbbc-6d62878aad4a",
-        "SourceAddress":"/cluster-x/worker-1/SYNC/ptp",
-		"URILocation": "http://localhost:8080/ocloudNotifications/v1/subsciptions/789be75d-7ac3-472e-bbbc-6d62878aad4a",
-		"ResourceType": "ptp",
-         "EndpointURI ": "http://localhost:9090/resourcestatus/ptp", // address where the event
-			"ResourceQualifier": {
-			"NodeName":"worker-1"
-              "Source":"/cluster-x/worker-1/SYNC/ptp"
-		}
-	}*/
-
-//CreateSubscription create subscription and send it to a channel that is shared by middleware to process
-/*201 Shall be returned when the subscription resource created successfully.
-	See note below.
-400 Bad request by the API consumer. For example, the endpoint URI does not include ‘localhost’.
-404 Subscription resource is not available. For example, ptp is not supported by the node.
-409 The subscription resource already exists.
-*/
-func (s *Server) CreateSubscription(w http.ResponseWriter, r *http.Request) {
+//createSubscription create subscription and send it to a channel that is shared by middleware to process
+// Creates a new subscription .
+// If subscription exists with same resource then existing subscription is returned .
+// responses:
+//  201: repoResp
+//  400: badReq
+//  204: noContent
+func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	bodyBytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -96,6 +70,13 @@ func (s *Server) CreateSubscription(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusCreated, newSub)
 }
 
+//createPublisher create publisher and send it to a channel that is shared by middleware to process
+// Creates a new publisher .
+// If publisher exists with same resource then existing publisher is returned .
+// responses:
+//  201: repoResp
+//  400: badReq
+//  204: noContent
 func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	bodyBytes, err := ioutil.ReadAll(r.Body)

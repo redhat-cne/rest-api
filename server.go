@@ -1,10 +1,31 @@
+// Package restapi Pub/Sub Rest API.
+//
+// Rest API spec .
+//
+// Terms Of Service:
+//
+//     Schemes: http, https
+//     Host: localhost:8080
+//     Version: 1.0.0
+//     Contact: Aneesh Puttur<aputtur@redhat.com>
+//
+//     Consumes:
+//     - application/json
+//
+//     Produces:
+//     - application/json
+//
+//
+// swagger:meta
 package restapi
 
 import (
 	"fmt"
 	"github.com/gorilla/mux"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
-	"github.com/redhat-cne/sdk-go/v1/pubsub"
+	"github.com/redhat-cne/sdk-go/pkg/event"
+	"github.com/redhat-cne/sdk-go/pkg/pubsub"
+	pubsubv1 "github.com/redhat-cne/sdk-go/v1/pubsub"
 	"sync"
 
 	"io"
@@ -19,9 +40,53 @@ type Server struct {
 	port       int
 	apiPath    string
 	dataOut    chan<- *channel.DataChan
-	close <-chan bool
+	close      <-chan bool
 	HTTPClient *http.Client
-	pubSubAPI  *pubsub.API
+	pubSubAPI  *pubsubv1.API
+}
+
+// publisher/subscription data model
+// swagger:response pubSubResp
+type swaggPubSubRes struct { //nolint:deadcode,unused
+	// in:body
+	Body pubsub.PubSub
+}
+
+//PubSub request model
+// swagger:response eventResp
+type swaggPubSubEventRes struct { //nolint:deadcode,unused
+	// in:body
+	Body event.Event
+}
+
+// Error Bad Request
+// swagger:response badReq
+type swaggReqBadRequest struct { //nolint:deadcode,unused
+	// in:body
+	Body struct {
+		// HTTP status code 400 -  Bad Request
+		Code int `json:"code" example:"400"`
+	}
+}
+
+// Error Not Found
+// swagger:response notFoundReq
+type swaggReqNotFound struct { //nolint:deadcode,unused
+	// in:body
+	Body struct {
+		// HTTP status code 404 -  Not Found
+		Code int `json:"code" example:"404"`
+	}
+}
+
+// Accepted
+// swagger:response acceptedReq
+type swaggReqAccepted struct { //nolint:deadcode,unused
+	// in:body
+	Body struct {
+		// HTTP status code 202 -  Accepted
+		Code int `json:"code" example:"202"`
+	}
 }
 
 // InitServer is used to supply configurations for rest routes server
@@ -30,14 +95,14 @@ func InitServer(port int, apiPath, storePath string, dataOut chan<- *channel.Dat
 		port:    port,
 		apiPath: apiPath,
 		dataOut: dataOut,
-		close: close,
+		close:   close,
 		HTTPClient: &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConnsPerHost: 20,
 			},
 			Timeout: 10 * time.Second,
 		},
-		pubSubAPI: pubsub.GetAPIInstance(storePath),
+		pubSubAPI: pubsubv1.GetAPIInstance(storePath),
 	}
 	return &server
 }
@@ -48,47 +113,50 @@ func (s *Server) Port() int {
 }
 
 //GetHostPath ...
-func (s *Server) GetHostPath() string{
-	return fmt.Sprintf("http://localhost:%d%s",s.port,s.apiPath)
+func (s *Server) GetHostPath() string {
+	return fmt.Sprintf("http://localhost:%d%s", s.port, s.apiPath)
 }
+
 // Start will start res routes service
 func (s *Server) Start(wg *sync.WaitGroup) {
 	defer wg.Done()
 	r := mux.NewRouter()
 	api := r.PathPrefix(s.apiPath).Subrouter()
 
-	//The POST method creates a subscription resource for the (Event) API consumer.
-	// SubscriptionInfo  status 201
-	// Shall be returned when the subscription resource created successfully.
-	/*Request
-	   {
-		"ResourceType": "ptp",
-	    "EndpointURI ": "http://localhost:9090/resourcestatus/ptp", /// daemon
-		"ResourceQualifier": {
-				"NodeName":"worker-1"
-				"Source":"/cluster-x/worker-1/SYNC/ptp"
-			}
-		}
-	Response:
-			{
-			//"SubscriptionID": "789be75d-7ac3-472e-bbbc-6d62878aad4a",
-	        "PublisherId": "789be75d-7ac3-472e-bbbc-6d62878aad4a",
-			"URILocation": "http://localhost:8080/ocloudNotifications/v1/subsciptions/789be75d-7ac3-472e-bbbc-6d62878aad4a",
-			"ResourceType": "ptp",
-	         "EndpointURI ": "http://localhost:9090/resourcestatus/ptp", // address where the event
-				"ResourceQualifier": {
-				"NodeName":"worker-1"
-	              "Source":"/cluster-x/worker-1/SYNC/ptp"
-			}
-		}*/
+	// createSubscription create subscription and send it to a channel that is shared by middleware to process
+	// swagger:operation POST /subscriptions/ subscription createSubscription
+	// ---
+	// summary: Creates a new subscription.
+	// description: If subscription creation is success(or if already exists), subscription will be returned with Created (201).
+	// parameters:
+	// - name: subscription
+	//   description: subscription to add to the list of subscriptions
+	//   in: body
+	//   schema:
+	//      "$ref": "#/definitions/PubSub"
+	// responses:
+	//   "201":
+	//     "$ref": "#/responses/pubSubResp"
+	//   "400":
+	//     "$ref": "#/responses/badReq"
+	api.HandleFunc("/subscriptions", s.createSubscription).Methods(http.MethodPost)
 
-	/*201 Shall be returned when the subscription resource created successfully.
-		See note below.
-	400 Bad request by the API consumer. For example, the endpoint URI does not include ‘localhost’.
-	404 Subscription resource is not available. For example, ptp is not supported by the node.
-	409 The subscription resource already exists.
-	*/
-	api.HandleFunc("/subscriptions", s.CreateSubscription).Methods(http.MethodPost)
+	//createPublisher create publisher and send it to a channel that is shared by middleware to process
+	// swagger:operation POST /publishers/ publishers createPublisher
+	// ---
+	// summary: Creates a new publisher.
+	// description: If publisher creation is success(or if already exists), publisher will be returned with Created (201).
+	// parameters:
+	// - name: publisher
+	//   description: publisher to add to the list of publishers
+	//   in: body
+	//   schema:
+	//      "$ref": "#/definitions/PubSub"
+	// responses:
+	//   "201":
+	//     "$ref": "#/responses/pubSubResp"
+	//   "400":
+	//     "$ref": "#/responses/badReq"
 	api.HandleFunc("/publishers", s.createPublisher).Methods(http.MethodPost)
 	/*
 		 this method a list of subscription object(s) and their associated properties
@@ -115,6 +183,22 @@ func (s *Server) Start(wg *sync.WaitGroup) {
 	api.HandleFunc("/dummy", dummy).Methods(http.MethodPost)
 	api.HandleFunc("/log", s.logEvent).Methods(http.MethodPost)
 
+	//publishEvent create event and send it to a channel that is shared by middleware to process
+	// swagger:operation POST /create/event/ event publishEvent
+	// ---
+	// summary: Creates a new event.
+	// description: If publisher is present for the event, then event creation is success and be returned with Accepted (202).
+	// parameters:
+	// - name: event
+	//   description: event along with publisher id
+	//   in: body
+	//   schema:
+	//      "$ref": "#/definitions/Event"
+	// responses:
+	//   "202":
+	//     "$ref": "#/responses/acceptedReq"
+	//   "400":
+	//     "$ref": "#/responses/badReq"
 	api.HandleFunc("/create/event", s.publishEvent).Methods(http.MethodPost)
 
 	err := r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
