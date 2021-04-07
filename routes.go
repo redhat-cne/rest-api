@@ -50,7 +50,7 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer response.Body.Close()
-		if response.StatusCode != http.StatusNoContent {
+		if response.StatusCode != http.StatusNoContent ||  response.StatusCode != http.StatusOK {
 			log.Printf("There was error validating endpointurl %s returned status code %d", sub.GetEndpointURI(), response.StatusCode)
 			respondWithError(w, http.StatusBadRequest, "Return url validation check failed for create subscription.check endpointURI")
 			return
@@ -99,7 +99,7 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer response.Body.Close()
-		if response.StatusCode != http.StatusNoContent {
+		if response.StatusCode != http.StatusNoContent ||  response.StatusCode != http.StatusOK {
 			log.Printf("There was error validating endpointurl %s returned status code %d", pub.GetEndpointURI(), response.StatusCode)
 			respondWithError(w, http.StatusBadRequest, "Return url validation check failed for create publisher,check endpointURI")
 			return

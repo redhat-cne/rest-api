@@ -35,7 +35,7 @@ If publisher creation is success(or if already exists), publisher will be return
 
 | Name | Located in | Description | Required | Schema |
 | ---- | ---------- | ----------- | -------- | ---- |
-| publisher | body | publisher to add to the list of publishers | yes | [PubSub](#pubsub) |
+| publisher | body | publisher to add to the list of pub | [PubSub](#pubsub) |
 
 ##### Responses
 
