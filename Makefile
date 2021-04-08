@@ -18,7 +18,10 @@ build:test
 lint:
 	golint `go list ./... | grep -v vendor`
 	golangci-lint run
+
 test:
 	go test ./...  -coverprofile=cover.out
+
+
 
 

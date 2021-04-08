@@ -4,20 +4,20 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"log"
-	"net/http"
-	"net/url"
-	"sync"
-	"testing"
-	"time"
-
 	"github.com/redhat-cne/rest-api"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	api "github.com/redhat-cne/sdk-go/v1/pubsub"
 	"github.com/stretchr/testify/assert"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"net/url"
+	"os"
+	"sync"
+	"testing"
+	"time"
 )
 
 var (
@@ -26,9 +26,13 @@ var (
 	eventOutCh chan *channel.DataChan
 	closeCh    chan bool
 	wg         sync.WaitGroup
-	port       int    = 8080
+	apiHost    string = "localhost:8081"
+	port       int    = 8081
 	apPath     string = "/routes/cne/v1/"
+	resource   string = "test/test"
 	storePath  string = "."
+	ObjSub     pubsub.PubSub
+	ObjPub     pubsub.PubSub
 )
 
 func init() {
@@ -38,8 +42,7 @@ func init() {
 
 }
 
-func TestServer_New(t *testing.T) {
-
+func TestMain(m *testing.M) {
 	server = restapi.InitServer(port, apPath, storePath, eventOutCh, closeCh)
 	//start http server
 	wg.Add(1)
@@ -54,210 +57,191 @@ func TestServer_New(t *testing.T) {
 		}
 	}()
 	time.Sleep(3 * time.Second)
-	// this should actually send an event
+	exitVal := m.Run()
+	os.Exit(exitVal)
 
+}
+
+func TestServer_Health(t *testing.T) {
 	// CHECK URL IS UP
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s%s%s", "http://localhost:8080", apPath, "health"), nil)
-	if err != nil {
-		panic(err)
-	}
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "health"), nil)
+	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
-	if err != nil {
-		panic(err)
-	}
+	assert.Nil(t, err)
+	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestServer_CreateSubscription(t *testing.T) {
 
 	// create subscription
 	sub := api.NewPubSub(
-		&types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8080", Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
-		"test/test1")
+		&types.URI{URL: url.URL{Scheme: "http", Host: apiHost, Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
+		resource)
 
 	data, err := json.Marshal(&sub)
 	assert.Nil(t, err)
 	assert.NotNil(t, data)
-	resp.Body.Close()
 	/// create new subscription
-	req, err = http.NewRequest("POST", fmt.Sprintf("%s%s%s", "http://localhost:8080", apPath, "subscriptions"), bytes.NewBuffer(data))
-	if err != nil {
-		panic(err)
-	}
+	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "subscriptions"), bytes.NewBuffer(data))
+	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err = server.HTTPClient.Do(req)
-	if err != nil {
-		panic(err)
-	}
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
 	defer resp.Body.Close()
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
+	assert.Nil(t, err)
 	bodyString := string(bodyBytes)
 	log.Print(bodyString)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
-	err = json.Unmarshal(bodyBytes, &sub)
+	err = json.Unmarshal(bodyBytes, &ObjSub)
 	assert.Nil(t, err)
+	assert.NotEmpty(t, ObjSub.ID)
+	assert.NotEmpty(t, ObjSub.URILocation)
+	assert.NotEmpty(t, ObjSub.EndPointURI)
+	assert.NotEmpty(t, ObjSub.Resource)
+	assert.Equal(t, sub.Resource, ObjSub.Resource)
+	log.Printf("Subscription:\n%s", ObjSub.String())
+
+}
+
+func TestServer_GetSubscription(t *testing.T) {
 
 	// Get Just Created Subscription
-	req, err = http.NewRequest("GET", fmt.Sprintf("%s%s%s/%s", "http://localhost:8080", apPath, "subscriptions", sub.ID), nil)
-	if err != nil {
-		panic(err)
-	}
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s%s%s/%s", apiHost, apPath, "subscriptions", ObjSub.ID), nil)
+	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err = server.HTTPClient.Do(req)
-	if err != nil {
-		panic(err)
-	}
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
 	defer resp.Body.Close()
-	bodyBytes, err = ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	assert.Nil(t, err)
 	rSub := api.New()
 	err = json.Unmarshal(bodyBytes, &rSub)
 	if e, ok := err.(*json.SyntaxError); ok {
 		log.Printf("syntax error at byte offset %d", e.Offset)
 	}
-	bodyString = string(bodyBytes)
+	bodyString := string(bodyBytes)
 	log.Print(bodyString)
 	assert.Nil(t, err)
-	assert.Equal(t, sub.ID, rSub.ID)
-	resp.Body.Close()
+	assert.Equal(t, rSub.ID, ObjSub.ID)
 
-	// Get All Subscriptions
-	req, err = http.NewRequest("GET", fmt.Sprintf("%s%s%s", "http://localhost:8080", apPath, "subscriptions"), nil)
-	if err != nil {
-		panic(err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err = server.HTTPClient.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close() // Close body only if response non-nil
-	bodyBytes, err = ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
-	var subList []pubsub.PubSub
-	log.Println(string(bodyBytes))
-	err = json.Unmarshal(bodyBytes, &subList)
-	assert.Nil(t, err)
-	assert.Greater(t, len(subList), 0)
+}
 
-	//********************Publisher
-
+func TestServer_CreatePublisher(t *testing.T) {
 	pub := pubsub.PubSub{
 		ID:          "",
-		EndPointURI: &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8080", Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
-		Resource:    "test/test",
+		EndPointURI: &types.URI{URL: url.URL{Scheme: "http", Host: apiHost, Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
+		Resource:    resource,
 	}
 	pubData, err := json.Marshal(&pub)
 	assert.Nil(t, err)
 	assert.NotNil(t, pubData)
 
-	req, err = http.NewRequest("POST", fmt.Sprintf("%s%s%s", "http://localhost:8080", apPath, "publishers"), bytes.NewBuffer(pubData))
-	if err != nil {
-		panic(err)
-	}
+	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "publishers"), bytes.NewBuffer(pubData))
+	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err = server.HTTPClient.Do(req)
-	if err != nil {
-		panic(err)
-	}
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
 	defer resp.Body.Close()
 	pubBodyBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = json.Unmarshal(pubBodyBytes, &pub)
+	assert.Nil(t, err)
+	err = json.Unmarshal(pubBodyBytes, &ObjPub)
 	assert.Nil(t, err)
 
 	pubBodyString := string(pubBodyBytes)
 	log.Print(pubBodyString)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
-	resp.Body.Close()
+	assert.NotEmpty(t, ObjPub.ID)
+	assert.NotEmpty(t, ObjPub.URILocation)
+	assert.NotEmpty(t, ObjPub.EndPointURI)
+	assert.NotEmpty(t, ObjPub.Resource)
+	assert.Equal(t, pub.Resource, ObjPub.Resource)
+	log.Printf("Publisher \n%s", ObjPub.String())
+}
 
+func TestServer_GetPublisher(t *testing.T) {
 	// Get Just created Publisher
-	req, err = http.NewRequest("GET", fmt.Sprintf("%s%s%s/%s", "http://localhost:8080", apPath, "publishers", pub.ID), nil)
-	if err != nil {
-		panic(err)
-	}
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s%s%s/%s", apiHost, apPath, "publishers", ObjPub.ID), nil)
+	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err = server.HTTPClient.Do(req)
-	if err != nil {
-		panic(err)
-	}
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
 	defer resp.Body.Close()
-	pubBodyBytes, err = ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
+	pubBodyBytes, err := ioutil.ReadAll(resp.Body)
+	assert.Nil(t, err)
 	var rPub pubsub.PubSub
 	log.Printf("the data %s", string(pubBodyBytes))
 	err = json.Unmarshal(pubBodyBytes, &rPub)
 	assert.Equal(t, resp.StatusCode, http.StatusOK)
 	assert.Nil(t, err)
-	assert.Equal(t, pub.ID, rPub.ID)
-	resp.Body.Close()
+	assert.Equal(t, ObjPub.ID, rPub.ID)
 
-	// Get All Publisher
-	req, err = http.NewRequest("GET", fmt.Sprintf("%s%s%s", "http://localhost:8080", apPath, "publishers"), nil)
-	if err != nil {
-		panic(err)
-	}
+}
+
+func TestServer_ListSubscriptions(t *testing.T) {
+	// Get All Subscriptions
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "subscriptions"), nil)
+	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err = server.HTTPClient.Do(req)
-	if err != nil {
-		panic(err)
-	}
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close() // Close body only if response non-nil
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	assert.Nil(t, err)
+	var subList []pubsub.PubSub
+	log.Printf("TestServer_ListSubscriptions :%s\n", string(bodyBytes))
+	err = json.Unmarshal(bodyBytes, &subList)
+	assert.Nil(t, err)
+	assert.Greater(t, len(subList), 0)
+
+}
+
+func TestServer_ListPublishers(t *testing.T) {
+	// Get All Publisher
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "publishers"), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
 	defer resp.Body.Close()
-	pubBodyBytes, err = ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
+	pubBodyBytes, err := ioutil.ReadAll(resp.Body)
+	assert.Nil(t, err)
 	var pubList []pubsub.PubSub
 	err = json.Unmarshal(pubBodyBytes, &pubList)
 	assert.Nil(t, err)
 	assert.Greater(t, len(pubList), 0)
+}
 
-	/*
-		r, _ = http.NewRequest("GET", "http://localhost:8080/api/v1/addresses", nil)
-		resp, err = client.Do(r)
-		if err != nil {
-			panic(err)
-		}
-		defer resp.Body.Close()
-		bodyBytes, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			log.Fatal(err)
-		}
-		bodyString := string(bodyBytes)
-		log.Print(bodyString)
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-	*/
-
-	// Delete All Publisher
-	req, _ = http.NewRequest("DELETE", fmt.Sprintf("%s%s%s", "http://localhost:8080", apPath, "publishers"), nil)
-	req.Header.Set("Content-Type", "application/json")
-	_, err = server.HTTPClient.Do(req)
-	if err != nil {
-		panic(err)
-	}
-
+func TestServer_DeleteSubscription(t *testing.T) {
 	// Delete All Subscriptions
-	req, _ = http.NewRequest("DELETE", fmt.Sprintf("%s%s%s", "http://localhost:8080", apPath, "subscriptions"), nil)
-	if err != nil {
-		panic(err)
-	}
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "subscriptions"), nil)
+	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	_, err = server.HTTPClient.Do(req)
-	if err != nil {
-		panic(err)
-	}
+	assert.Nil(t, err)
+}
+
+func TestServer_DeletePublisher(t *testing.T) {
+	// Delete All Publisher
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "publishers"), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	_, err = server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+
+}
+
+func TestServer_TestDummyStatusCode(t *testing.T) {
+	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "dummy"), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
+}
+
+func TestServer_End(t *testing.T) {
 	close(eventOutCh)
-
-	//wg.Wait()
-
 }
