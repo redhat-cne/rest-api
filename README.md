@@ -1,4 +1,7 @@
 # Rest API
+[![go-doc](https://godoc.org/github.com/redhat-cne/rest-api?status.svg)](https://godoc.org/github.com/redhat-cne/rest-api)
+[![Go Report Card](https://goreportcard.com/badge/github.com/redhat-cne/rest-api)](https://goreportcard.com/report/github.com/redhat-cne/rest-api)
+[![LICENSE](https://img.shields.io/github/license/redhat-cne/rest-api.svg)](https://github.com/redhat-cne/rest-api/blob/main/LICENSE)
 
 Available  routes 
 ```html
