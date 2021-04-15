@@ -4,12 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/redhat-cne/rest-api"
-	"github.com/redhat-cne/sdk-go/pkg/channel"
-	"github.com/redhat-cne/sdk-go/pkg/pubsub"
-	"github.com/redhat-cne/sdk-go/pkg/types"
-	api "github.com/redhat-cne/sdk-go/v1/pubsub"
-	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -18,6 +12,14 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/redhat-cne/rest-api"
+	"github.com/redhat-cne/sdk-go/pkg/channel"
+	"github.com/redhat-cne/sdk-go/pkg/pubsub"
+	"github.com/redhat-cne/sdk-go/pkg/types"
+	api "github.com/redhat-cne/sdk-go/v1/pubsub"
+	"github.com/stretchr/testify/assert"
+	"golang.org/x/net/context"
 )
 
 var (
@@ -36,10 +38,8 @@ var (
 )
 
 func init() {
-
 	eventOutCh = make(chan *channel.DataChan, 10)
 	closeCh = make(chan bool)
-
 }
 
 func TestMain(m *testing.M) {
@@ -59,12 +59,14 @@ func TestMain(m *testing.M) {
 	time.Sleep(3 * time.Second)
 	exitVal := m.Run()
 	os.Exit(exitVal)
-
 }
 
 func TestServer_Health(t *testing.T) {
 	// CHECK URL IS UP
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "health"), nil)
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "health"), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -74,7 +76,6 @@ func TestServer_Health(t *testing.T) {
 }
 
 func TestServer_CreateSubscription(t *testing.T) {
-
 	// create subscription
 	sub := api.NewPubSub(
 		&types.URI{URL: url.URL{Scheme: "http", Host: apiHost, Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
@@ -84,7 +85,10 @@ func TestServer_CreateSubscription(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, data)
 	/// create new subscription
-	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "subscriptions"), bytes.NewBuffer(data))
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "subscriptions"), bytes.NewBuffer(data))
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -103,11 +107,9 @@ func TestServer_CreateSubscription(t *testing.T) {
 	assert.NotEmpty(t, ObjSub.Resource)
 	assert.Equal(t, sub.Resource, ObjSub.Resource)
 	log.Printf("Subscription:\n%s", ObjSub.String())
-
 }
 
 func TestServer_GetSubscription(t *testing.T) {
-
 	// Get Just Created Subscription
 	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s%s%s/%s", apiHost, apPath, "subscriptions", ObjSub.ID), nil)
 	assert.Nil(t, err)
@@ -126,7 +128,6 @@ func TestServer_GetSubscription(t *testing.T) {
 	log.Print(bodyString)
 	assert.Nil(t, err)
 	assert.Equal(t, rSub.ID, ObjSub.ID)
-
 }
 
 func TestServer_CreatePublisher(t *testing.T) {
@@ -138,8 +139,10 @@ func TestServer_CreatePublisher(t *testing.T) {
 	pubData, err := json.Marshal(&pub)
 	assert.Nil(t, err)
 	assert.NotNil(t, pubData)
-
-	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "publishers"), bytes.NewBuffer(pubData))
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "publishers"), bytes.NewBuffer(pubData))
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -177,12 +180,14 @@ func TestServer_GetPublisher(t *testing.T) {
 	assert.Equal(t, resp.StatusCode, http.StatusOK)
 	assert.Nil(t, err)
 	assert.Equal(t, ObjPub.ID, rPub.ID)
-
 }
 
 func TestServer_ListSubscriptions(t *testing.T) {
 	// Get All Subscriptions
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "subscriptions"), nil)
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "subscriptions"), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -195,12 +200,14 @@ func TestServer_ListSubscriptions(t *testing.T) {
 	err = json.Unmarshal(bodyBytes, &subList)
 	assert.Nil(t, err)
 	assert.Greater(t, len(subList), 0)
-
 }
 
 func TestServer_ListPublishers(t *testing.T) {
 	// Get All Publisher
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "publishers"), nil)
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "publishers"), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -211,34 +218,82 @@ func TestServer_ListPublishers(t *testing.T) {
 	var pubList []pubsub.PubSub
 	err = json.Unmarshal(pubBodyBytes, &pubList)
 	assert.Nil(t, err)
+	defer resp.Body.Close()
 	assert.Greater(t, len(pubList), 0)
 }
 
-func TestServer_DeleteSubscription(t *testing.T) {
-	// Delete All Subscriptions
-	req, err := http.NewRequest("DELETE", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "subscriptions"), nil)
-	assert.Nil(t, err)
-	req.Header.Set("Content-Type", "application/json")
-	_, err = server.HTTPClient.Do(req)
-	assert.Nil(t, err)
-}
-
-func TestServer_DeletePublisher(t *testing.T) {
-	// Delete All Publisher
-	req, err := http.NewRequest("DELETE", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "publishers"), nil)
-	assert.Nil(t, err)
-	req.Header.Set("Content-Type", "application/json")
-	_, err = server.HTTPClient.Do(req)
-	assert.Nil(t, err)
-
-}
-
-func TestServer_TestDummyStatusCode(t *testing.T) {
-	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "dummy"), nil)
+func TestServer_TestPingStatusStatusCode(t *testing.T) {
+	req, err := http.NewRequest("PUT", fmt.Sprintf("http://%s%s%s%s", apiHost, apPath, "subscriptions/status/", ObjSub.ID), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
+}
+
+func TestServer_DeleteSubscription(t *testing.T) {
+	// Delete All Subscriptions
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "DELETE", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "subscriptions"), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+}
+
+func TestServer_DeletePublisher(t *testing.T) {
+	// Delete All Publisher
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "DELETE", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "publishers"), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+}
+
+func TestServer_GetNonExistingPublisher(t *testing.T) {
+	// Get Just created Publisher
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s%s%s/%s", apiHost, apPath, "publishers", ObjPub.ID), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, resp.StatusCode, http.StatusBadRequest)
+	assert.Nil(t, err)
+}
+
+func TestServer_GetNonExistingSubscription(t *testing.T) {
+	// Get Just Created Subscription
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://%s%s%s/%s", apiHost, apPath, "subscriptions", ObjSub.ID), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, resp.StatusCode, http.StatusBadRequest)
+}
+
+func TestServer_TestDummyStatusCode(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "dummy"), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
 	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
 }
 
