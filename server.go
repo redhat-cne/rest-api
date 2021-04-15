@@ -21,12 +21,15 @@ package restapi
 
 import (
 	"fmt"
+	"net/url"
+	"sync"
+
 	"github.com/gorilla/mux"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	"github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
+	"github.com/redhat-cne/sdk-go/pkg/types"
 	pubsubv1 "github.com/redhat-cne/sdk-go/v1/pubsub"
-	"sync"
 
 	"io"
 	"log"
@@ -52,7 +55,7 @@ type swaggPubSubRes struct { //nolint:deadcode,unused
 	Body pubsub.PubSub
 }
 
-//PubSub request model
+// PubSub request model
 // swagger:response eventResp
 type swaggPubSubEventRes struct { //nolint:deadcode,unused
 	// in:body
@@ -90,20 +93,23 @@ type swaggReqAccepted struct { //nolint:deadcode,unused
 }
 
 // InitServer is used to supply configurations for rest routes server
-func InitServer(port int, apiPath, storePath string, dataOut chan<- *channel.DataChan, close <-chan bool) *Server {
+func InitServer(port int, apiPath, storePath string, dataOut chan<- *channel.DataChan, closeCh <-chan bool) *Server {
+	baseURL := &types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", port), Path: apiPath}}
 	server := Server{
 		port:    port,
 		apiPath: apiPath,
 		dataOut: dataOut,
-		close:   close,
+		close:   closeCh,
 		HTTPClient: &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConnsPerHost: 20,
 			},
 			Timeout: 10 * time.Second,
 		},
-		pubSubAPI: pubsubv1.GetAPIInstance(storePath),
+		pubSubAPI: pubsubv1.GetAPIInstance(storePath, nil),
 	}
+	// singleton
+	server.pubSubAPI.SetBaseURI(baseURL)
 	return &server
 }
 
@@ -112,14 +118,14 @@ func (s *Server) Port() int {
 	return s.port
 }
 
-//GetHostPath ...
+// GetHostPath  returns hostpath
 func (s *Server) GetHostPath() string {
 	return fmt.Sprintf("http://localhost:%d%s", s.port, s.apiPath)
 }
 
 // Start will start res routes service
 func (s *Server) Start(wg *sync.WaitGroup) {
-	defer wg.Done()
+
 	r := mux.NewRouter()
 	api := r.PathPrefix(s.apiPath).Subrouter()
 
@@ -175,6 +181,21 @@ func (s *Server) Start(wg *sync.WaitGroup) {
 
 	api.HandleFunc("/subscriptions", s.deleteAllSubscriptions).Methods(http.MethodDelete)
 	api.HandleFunc("/publishers", s.deleteAllPublishers).Methods(http.MethodDelete)
+
+	//pingForSubscribedEventStatus pings for event status  if the publisher  has capability to push event on demand
+	// swagger:operation POST /subscriptions/status subscriptions pingForSubscribedEventStatus
+	// ---
+	// summary: Get status of publishing events.
+	// description: If publisher status ping is success, call  will be returned with status accepted.
+	// parameters:
+	// - name: subscriptionid
+	//   description: subscription id to check status for
+	// responses:
+	//   "201":
+	//     "$ref": "#/responses/pubSubResp"
+	//   "400":
+	//     "$ref": "#/responses/badReq"
+	api.HandleFunc("/subscriptions/status/{subscriptionid}", s.pingForSubscribedEventStatus).Methods(http.MethodPut)
 
 	api.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "OK") //nolint:errcheck
@@ -236,5 +257,4 @@ func (s *Server) Start(wg *sync.WaitGroup) {
 	log.Print("Started Rest API Server")
 	log.Printf("endpoint %s", s.apiPath)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", s.port), api))
-
 }
