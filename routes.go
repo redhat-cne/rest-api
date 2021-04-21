@@ -45,28 +45,30 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 	if sub.GetEndpointURI() != "" {
 		response, err = s.HTTPClient.Post(sub.GetEndpointURI(), cloudevents.ApplicationJSON, nil)
 		if err != nil {
-			log.Printf("There was error validating endpointurl %v", err)
+			log.Printf("there was error validating endpointurl %v, subscription wont be created", err)
 			respondWithError(w, err.Error())
 			return
 		}
 		defer response.Body.Close()
 		if response.StatusCode != http.StatusNoContent {
-			log.Printf("There was error validating endpointurl %s returned status code %d", sub.GetEndpointURI(), response.StatusCode)
-			respondWithError(w, "Return url validation check failed for create subscription.check endpointURI")
+			log.Printf("there was an error validating endpointurl %s returned status code %d", sub.GetEndpointURI(), response.StatusCode)
+			respondWithError(w, "return url validation check failed for create subscription.check endpointURI")
 			return
 		}
 	}
 
 	// check sub.EndpointURI by get
 	sub.SetID(uuid.New().String())
-	_ = sub.SetURILocation(fmt.Sprintf("http://localhost:%d%s%s/%s", s.port, s.apiPath, "subscriptions", sub.ID)) //noling:errcheck
+	_ = sub.SetURILocation(fmt.Sprintf("http://localhost:%d%s%s/%s", s.port, s.apiPath, "subscriptions", sub.ID)) //nolint:errcheck
 
 	newSub, err := s.pubSubAPI.CreateSubscription(sub)
 	if err != nil {
+		log.Printf("error creating subscription %v", err)
 		respondWithError(w, err.Error())
 		return
 	}
-
+	// go ahead and create QDR to this address
+	s.sendOut(channel.LISTENER, &newSub)
 	respondWithJSON(w, http.StatusCreated, newSub)
 }
 
@@ -86,32 +88,31 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pub := pubsub.PubSub{}
-
 	if err = json.Unmarshal(bodyBytes, &pub); err != nil {
 		respondWithError(w, "marshalling error")
 		return
 	}
-
 	if pub.GetEndpointURI() != "" {
 		response, err = s.HTTPClient.Post(pub.GetEndpointURI(), cloudevents.ApplicationJSON, nil)
 		if err != nil {
-			log.Printf("There was error validating endpointurl %v", err)
+			log.Printf("there was an error validating the publisher endpointurl %v, publisher won't be created.", err)
 			respondWithError(w, err.Error())
 			return
 		}
 		defer response.Body.Close()
 		if response.StatusCode != http.StatusNoContent {
-			log.Printf("There was error validating endpointurl %s returned status code %d", pub.GetEndpointURI(), response.StatusCode)
-			respondWithError(w, "Return url validation check failed for create publisher,check endpointURI")
+			log.Printf("there was an error validating endpointurl %s returned status code %d", pub.GetEndpointURI(), response.StatusCode)
+			respondWithError(w, "return url validation check failed for create publisher,check endpointURI")
 			return
 		}
 	}
 
 	// check sub.EndpointURI by get
 	pub.SetID(uuid.New().String())
-	_ = pub.SetURILocation(fmt.Sprintf("http://localhost:%d%s%s/%s", s.port, s.apiPath, "subscriptions", pub.ID)) //noling:errcheck
+	_ = pub.SetURILocation(fmt.Sprintf("http://localhost:%d%s%s/%s", s.port, s.apiPath, "subscriptions", pub.ID)) //nolint:errcheck
 	newPub, err := s.pubSubAPI.CreatePublisher(pub)
 	if err != nil {
+		log.Printf("error creating publisher %v", err)
 		respondWithError(w, err.Error())
 		return
 	}
