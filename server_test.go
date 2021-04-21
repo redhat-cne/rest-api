@@ -28,8 +28,7 @@ var (
 	eventOutCh chan *channel.DataChan
 	closeCh    chan bool
 	wg         sync.WaitGroup
-	apiHost    string = "localhost:8081"
-	port       int    = 8081
+	port       int    = 0
 	apPath     string = "/routes/cne/v1/"
 	resource   string = "test/test"
 	storePath  string = "."
@@ -57,6 +56,7 @@ func TestMain(m *testing.M) {
 		}
 	}()
 	time.Sleep(3 * time.Second)
+	port = server.Port()
 	exitVal := m.Run()
 	os.Exit(exitVal)
 }
@@ -66,7 +66,7 @@ func TestServer_Health(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "health"), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "health"), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -78,7 +78,7 @@ func TestServer_Health(t *testing.T) {
 func TestServer_CreateSubscription(t *testing.T) {
 	// create subscription
 	sub := api.NewPubSub(
-		&types.URI{URL: url.URL{Scheme: "http", Host: apiHost, Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
+		&types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", port), Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
 		resource)
 
 	data, err := json.Marshal(&sub)
@@ -88,7 +88,7 @@ func TestServer_CreateSubscription(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "subscriptions"), bytes.NewBuffer(data))
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "subscriptions"), bytes.NewBuffer(data))
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -111,7 +111,7 @@ func TestServer_CreateSubscription(t *testing.T) {
 
 func TestServer_GetSubscription(t *testing.T) {
 	// Get Just Created Subscription
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s%s%s/%s", apiHost, apPath, "subscriptions", ObjSub.ID), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, "subscriptions", ObjSub.ID), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -133,7 +133,7 @@ func TestServer_GetSubscription(t *testing.T) {
 func TestServer_CreatePublisher(t *testing.T) {
 	pub := pubsub.PubSub{
 		ID:          "",
-		EndPointURI: &types.URI{URL: url.URL{Scheme: "http", Host: apiHost, Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
+		EndPointURI: &types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", port), Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
 		Resource:    resource,
 	}
 	pubData, err := json.Marshal(&pub)
@@ -142,7 +142,7 @@ func TestServer_CreatePublisher(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "publishers"), bytes.NewBuffer(pubData))
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "publishers"), bytes.NewBuffer(pubData))
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -166,7 +166,7 @@ func TestServer_CreatePublisher(t *testing.T) {
 
 func TestServer_GetPublisher(t *testing.T) {
 	// Get Just created Publisher
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s%s%s/%s", apiHost, apPath, "publishers", ObjPub.ID), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, "publishers", ObjPub.ID), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -187,7 +187,7 @@ func TestServer_ListSubscriptions(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "subscriptions"), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "subscriptions"), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -207,7 +207,7 @@ func TestServer_ListPublishers(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "publishers"), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "publishers"), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -223,7 +223,7 @@ func TestServer_ListPublishers(t *testing.T) {
 }
 
 func TestServer_TestPingStatusStatusCode(t *testing.T) {
-	req, err := http.NewRequest("PUT", fmt.Sprintf("http://%s%s%s%s", apiHost, apPath, "subscriptions/status/", ObjSub.ID), nil)
+	req, err := http.NewRequest("PUT", fmt.Sprintf("http://localhost:%d%s%s%s", port, apPath, "subscriptions/status/", ObjSub.ID), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -237,7 +237,7 @@ func TestServer_DeleteSubscription(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "DELETE", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "subscriptions"), nil)
+	req, err := http.NewRequestWithContext(ctx, "DELETE", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "subscriptions"), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -250,7 +250,7 @@ func TestServer_DeletePublisher(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "DELETE", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "publishers"), nil)
+	req, err := http.NewRequestWithContext(ctx, "DELETE", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "publishers"), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -260,7 +260,7 @@ func TestServer_DeletePublisher(t *testing.T) {
 
 func TestServer_GetNonExistingPublisher(t *testing.T) {
 	// Get Just created Publisher
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s%s%s/%s", apiHost, apPath, "publishers", ObjPub.ID), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, "publishers", ObjPub.ID), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -275,7 +275,7 @@ func TestServer_GetNonExistingSubscription(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://%s%s%s/%s", apiHost, apPath, "subscriptions", ObjSub.ID), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, "subscriptions", ObjSub.ID), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -288,7 +288,7 @@ func TestServer_TestDummyStatusCode(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://%s%s%s", apiHost, apPath, "dummy"), nil)
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "dummy"), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -299,4 +299,6 @@ func TestServer_TestDummyStatusCode(t *testing.T) {
 
 func TestServer_End(t *testing.T) {
 	close(eventOutCh)
+	close(closeCh)
+
 }

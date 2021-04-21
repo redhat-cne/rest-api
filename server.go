@@ -21,7 +21,7 @@ package restapi
 
 import (
 	"fmt"
-	"net/url"
+	"net"
 	"sync"
 
 	"github.com/gorilla/mux"
@@ -38,14 +38,32 @@ import (
 	"time"
 )
 
+var once sync.Once
+
+// ServerInstance ... is singleton instance
+var ServerInstance *Server
+var healthCheckPause time.Duration = 2 * time.Second
+
+type serverStatus int
+
+const (
+	starting = iota
+	started
+	notReady
+	failed
+)
+
 // Server defines rest routes server object
 type Server struct {
-	port       int
-	apiPath    string
+	port    int
+	apiPath string
+	//data out is amqp in channel
 	dataOut    chan<- *channel.DataChan
-	close      <-chan bool
+	closeCh    <-chan bool
 	HTTPClient *http.Client
+	httpServer *http.Server
 	pubSubAPI  *pubsubv1.API
+	status     serverStatus
 }
 
 // publisher/subscription data model
@@ -94,23 +112,57 @@ type swaggReqAccepted struct { //nolint:deadcode,unused
 
 // InitServer is used to supply configurations for rest routes server
 func InitServer(port int, apiPath, storePath string, dataOut chan<- *channel.DataChan, closeCh <-chan bool) *Server {
-	baseURL := &types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", port), Path: apiPath}}
-	server := Server{
-		port:    port,
-		apiPath: apiPath,
-		dataOut: dataOut,
-		close:   closeCh,
-		HTTPClient: &http.Client{
-			Transport: &http.Transport{
-				MaxIdleConnsPerHost: 20,
+	once.Do(func() {
+		ServerInstance = &Server{
+			port:    port,
+			apiPath: apiPath,
+			dataOut: dataOut,
+			closeCh: closeCh,
+			status:  notReady,
+			HTTPClient: &http.Client{
+				Transport: &http.Transport{
+					MaxIdleConnsPerHost: 20,
+				},
+				Timeout: 10 * time.Second,
 			},
-			Timeout: 10 * time.Second,
-		},
-		pubSubAPI: pubsubv1.GetAPIInstance(storePath, nil),
-	}
+			pubSubAPI: pubsubv1.GetAPIInstance(storePath),
+		}
+	})
 	// singleton
-	server.pubSubAPI.SetBaseURI(baseURL)
-	return &server
+	return ServerInstance
+}
+
+// EndPointHealthChk checks for rest service health
+func (s *Server) EndPointHealthChk() (err error) {
+	log.Printf("checking for rest service health\n")
+	for i := 0; i <= 5; i++ {
+		if !s.Ready() {
+			time.Sleep(healthCheckPause)
+			log.Printf("server status %t", s.Ready())
+			continue
+		}
+
+		log.Printf("health check %s%s ", s.GetHostPath(), "health")
+		response, errResp := http.Get(fmt.Sprintf("%s%s", s.GetHostPath(), "health"))
+		if errResp != nil {
+			log.Printf("try %d, return health check of the rest service for error  %v", i, errResp)
+			time.Sleep(healthCheckPause)
+			err = errResp
+			continue
+		}
+		if response != nil && response.StatusCode == http.StatusOK {
+			response.Body.Close()
+			log.Printf("rest service returned healthy status")
+			time.Sleep(healthCheckPause)
+			err = nil
+			return
+		}
+		response.Body.Close()
+	}
+	if err != nil {
+		err = fmt.Errorf("error connecting to rest api %s", err.Error())
+	}
+	return
 }
 
 // Port port id
@@ -118,14 +170,23 @@ func (s *Server) Port() int {
 	return s.port
 }
 
+//Ready gives the status of the server
+func (s *Server) Ready() bool {
+	return s.status == started
+}
+
 // GetHostPath  returns hostpath
-func (s *Server) GetHostPath() string {
-	return fmt.Sprintf("http://localhost:%d%s", s.port, s.apiPath)
+func (s *Server) GetHostPath() *types.URI {
+	return types.ParseURI(fmt.Sprintf("http://localhost:%d%s", s.port, s.apiPath))
 }
 
 // Start will start res routes service
 func (s *Server) Start(wg *sync.WaitGroup) {
-
+	if s.status == started || s.status == starting {
+		log.Printf("Server is already running at port %d", s.port)
+		return
+	}
+	s.status = starting
 	r := mux.NewRouter()
 	api := r.PathPrefix(s.apiPath).Subrouter()
 
@@ -256,5 +317,42 @@ func (s *Server) Start(wg *sync.WaitGroup) {
 
 	log.Print("Started Rest API Server")
 	log.Printf("endpoint %s", s.apiPath)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", s.port), api))
+
+	s.httpServer = &http.Server{
+		Addr:    fmt.Sprintf(":%d", s.port),
+		Handler: api,
+	}
+	/*go func() {
+		<-s.closeCh
+		s.httpServer.Close()
+	}()*/
+	//if port is undecided then let get first available port
+	var httpError error
+	if s.port == 0 {
+		listener, err := net.Listen("tcp", ":0")
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("Using port:", listener.Addr().(*net.TCPAddr).Port)
+		s.port = listener.Addr().(*net.TCPAddr).Port
+		s.httpServer.Addr = fmt.Sprintf("%d", s.port)
+		s.status = started
+		httpError = s.httpServer.Serve(listener)
+	} else {
+		s.status = started
+		httpError = s.httpServer.ListenAndServe()
+	}
+
+	if httpError != nil {
+		log.Printf("While serving HTTP: %v\n ", httpError)
+		s.status = failed
+	} else {
+		log.Printf("service ready to server at %s: ", s.GetHostPath())
+	}
+}
+
+// Shutdown ... shutdown rest service api
+func (s *Server) Shutdown() {
+	log.Printf("shutting down rest api sever")
+	s.httpServer.Close()
 }
