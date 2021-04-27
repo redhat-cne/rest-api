@@ -37,7 +37,6 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sub := pubsub.PubSub{}
-
 	if err = json.Unmarshal(bodyBytes, &sub); err != nil {
 		respondWithError(w, "marshalling error")
 		return
@@ -56,7 +55,6 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
 	// check sub.EndpointURI by get
 	sub.SetID(uuid.New().String())
 	_ = sub.SetURILocation(fmt.Sprintf("http://localhost:%d%s%s/%s", s.port, s.apiPath, "subscriptions", sub.ID)) //nolint:errcheck
@@ -68,16 +66,6 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("subscription created successfully.")
-	//for debug //TODO: remove this debug block
-	var subs []pubsub.PubSub
-	b, e := s.pubSubAPI.GetPublishersFromFile()
-	if e != nil {
-		log.Printf("error trying to read contents of file sub.json")
-	} else if e := json.Unmarshal(b, &subs); e != nil {
-		log.Printf("data in file :%#v", subs)
-	} else {
-		log.Printf("error marshalling subscriptions")
-	}
 	// go ahead and create QDR to this address
 	s.sendOut(channel.LISTENER, &newSub)
 	respondWithJSON(w, http.StatusCreated, newSub)
@@ -128,16 +116,6 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("publisher created successfully.")
-	//for debug //TODO: remove this debug block
-	var pubs []pubsub.PubSub
-	b, e := s.pubSubAPI.GetPublishersFromFile()
-	if e != nil {
-		log.Printf("error trying to read contents of file sub.json")
-	} else if e := json.Unmarshal(b, &pubs); e != nil {
-		log.Printf("data in file :%#v", pubs)
-	} else {
-		log.Printf("error marshalling publisher")
-	}
 	// go ahead and create QDR to this address
 	s.sendOut(channel.SENDER, &newPub)
 	respondWithJSON(w, http.StatusCreated, newPub)
@@ -152,6 +130,7 @@ func (s *Server) sendOut(eType channel.Type, sub *pubsub.PubSub) {
 		Status:  channel.NEW,
 	}
 }
+
 func (s *Server) getSubscriptionByID(w http.ResponseWriter, r *http.Request) {
 	queries := mux.Vars(r)
 	subscriptionID, ok := queries["subscriptionid"]
@@ -226,6 +205,7 @@ func (s *Server) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 	respondWithMessage(w, http.StatusOK, "OK")
 }
+
 func (s *Server) deleteAllSubscriptions(w http.ResponseWriter, r *http.Request) {
 	if err := s.pubSubAPI.DeleteAllSubscriptions(); err != nil {
 		respondWithError(w, err.Error())
@@ -258,7 +238,7 @@ func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 	} // check if publisher is found
 	pub, err := s.pubSubAPI.GetPublisher(cneEvent.ID)
 	if err != nil {
-		respondWithError(w, fmt.Sprintf("No publisher data for id %s present to publish event", cneEvent.ID))
+		respondWithError(w, fmt.Sprintf("no publisher data for id %s found to publish event for", cneEvent.ID))
 		return
 	}
 
