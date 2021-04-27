@@ -67,6 +67,17 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, err.Error())
 		return
 	}
+	log.Printf("subscription created successfully.")
+	//for debug //TODO: remove this debug block
+	var subs []pubsub.PubSub
+	b, e := s.pubSubAPI.GetPublishersFromFile()
+	if e != nil {
+		log.Printf("error trying to read contents of file sub.json")
+	} else if e := json.Unmarshal(b, &subs); e != nil {
+		log.Printf("data in file :%#v", subs)
+	} else {
+		log.Printf("error marshalling subscriptions")
+	}
 	// go ahead and create QDR to this address
 	s.sendOut(channel.LISTENER, &newSub)
 	respondWithJSON(w, http.StatusCreated, newSub)
@@ -115,6 +126,17 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 		log.Printf("error creating publisher %v", err)
 		respondWithError(w, err.Error())
 		return
+	}
+	log.Printf("publisher created successfully.")
+	//for debug //TODO: remove this debug block
+	var pubs []pubsub.PubSub
+	b, e := s.pubSubAPI.GetPublishersFromFile()
+	if e != nil {
+		log.Printf("error trying to read contents of file sub.json")
+	} else if e := json.Unmarshal(b, &pubs); e != nil {
+		log.Printf("data in file :%#v", pubs)
+	} else {
+		log.Printf("error marshalling publisher")
 	}
 	// go ahead and create QDR to this address
 	s.sendOut(channel.SENDER, &newPub)
@@ -236,7 +258,7 @@ func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 	} // check if publisher is found
 	pub, err := s.pubSubAPI.GetPublisher(cneEvent.ID)
 	if err != nil {
-		respondWithError(w, "No publisher data present to publish event")
+		respondWithError(w, fmt.Sprintf("No publisher data for id %s present to publish event", cneEvent.ID))
 		return
 	}
 
