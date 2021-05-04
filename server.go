@@ -31,8 +31,8 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	pubsubv1 "github.com/redhat-cne/sdk-go/v1/pubsub"
 
+	log "github.com/sirupsen/logrus"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -134,7 +134,7 @@ func InitServer(port int, apiPath, storePath string, dataOut chan<- *channel.Dat
 
 // EndPointHealthChk checks for rest service health
 func (s *Server) EndPointHealthChk() (err error) {
-	log.Printf("checking for rest service health\n")
+	log.Info("checking for rest service health\n")
 	for i := 0; i <= 5; i++ {
 		if !s.Ready() {
 			time.Sleep(healthCheckPause)
@@ -142,17 +142,17 @@ func (s *Server) EndPointHealthChk() (err error) {
 			continue
 		}
 
-		log.Printf("health check %s%s ", s.GetHostPath(), "health")
+		log.Debugf("health check %s%s ", s.GetHostPath(), "health")
 		response, errResp := http.Get(fmt.Sprintf("%s%s", s.GetHostPath(), "health"))
 		if errResp != nil {
-			log.Printf("try %d, return health check of the rest service for error  %v", i, errResp)
+			log.Errorf("try %d, return health check of the rest service for error  %v", i, errResp)
 			time.Sleep(healthCheckPause)
 			err = errResp
 			continue
 		}
 		if response != nil && response.StatusCode == http.StatusOK {
 			response.Body.Close()
-			log.Printf("rest service returned healthy status")
+			log.Infof("rest service returned healthy status")
 			time.Sleep(healthCheckPause)
 			err = nil
 			return
@@ -183,7 +183,7 @@ func (s *Server) GetHostPath() *types.URI {
 // Start will start res routes service
 func (s *Server) Start(wg *sync.WaitGroup) {
 	if s.status == started || s.status == starting {
-		log.Printf("Server is already running at port %d", s.port)
+		log.Infof("Server is already running at port %d", s.port)
 		return
 	}
 	s.status = starting
@@ -333,7 +333,7 @@ func (s *Server) Start(wg *sync.WaitGroup) {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println("Using port:", listener.Addr().(*net.TCPAddr).Port)
+		log.Println("Using port:", listener.Addr().(*net.TCPAddr).Port)
 		s.port = listener.Addr().(*net.TCPAddr).Port
 		s.httpServer.Addr = fmt.Sprintf("%d", s.port)
 		s.status = started
@@ -344,15 +344,15 @@ func (s *Server) Start(wg *sync.WaitGroup) {
 	}
 
 	if httpError != nil {
-		log.Printf("While serving HTTP: %v\n ", httpError)
+		log.Errorf("while serving HTTP: %v\n ", httpError)
 		s.status = failed
 	} else {
-		log.Printf("service ready to server at %s: ", s.GetHostPath())
+		log.Infof("service ready to server at %s: ", s.GetHostPath())
 	}
 }
 
 // Shutdown ... shutdown rest service api
 func (s *Server) Shutdown() {
-	log.Printf("shutting down rest api sever")
+	log.Warnf("shutting down rest api sever")
 	s.httpServer.Close()
 }
