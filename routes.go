@@ -3,6 +3,7 @@ package restapi
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/redhat-cne/rest-api/pkg/localmetrics"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	ce "github.com/cloudevents/sdk-go/v2/event"
@@ -39,12 +40,14 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 	sub := pubsub.PubSub{}
 	if err = json.Unmarshal(bodyBytes, &sub); err != nil {
 		respondWithError(w, "marshalling error")
+		localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
 		return
 	}
 	if sub.GetEndpointURI() != "" {
 		response, err = s.HTTPClient.Post(sub.GetEndpointURI(), cloudevents.ApplicationJSON, nil)
 		if err != nil {
 			log.Printf("there was error validating endpointurl %v, subscription wont be created", err)
+			localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
 			respondWithError(w, err.Error())
 			return
 		}
@@ -52,6 +55,7 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 		if response.StatusCode != http.StatusNoContent {
 			log.Printf("there was an error validating endpointurl %s returned status code %d", sub.GetEndpointURI(), response.StatusCode)
 			respondWithError(w, "return url validation check failed for create subscription.check endpointURI")
+			localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
 			return
 		}
 	}
@@ -62,12 +66,14 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 	newSub, err := s.pubSubAPI.CreateSubscription(sub)
 	if err != nil {
 		log.Printf("error creating subscription %v", err)
+		localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
 		respondWithError(w, err.Error())
 		return
 	}
 	log.Printf("subscription created successfully.")
 	// go ahead and create QDR to this address
 	s.sendOut(channel.LISTENER, &newSub)
+	localmetrics.UpdateSubscriptionCount(localmetrics.ACTIVE, 1)
 	respondWithJSON(w, http.StatusCreated, newSub)
 }
 
@@ -88,6 +94,7 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 	}
 	pub := pubsub.PubSub{}
 	if err = json.Unmarshal(bodyBytes, &pub); err != nil {
+		localmetrics.UpdatePublisherCount(localmetrics.FAILCREATE, 1)
 		respondWithError(w, "marshalling error")
 		return
 	}
@@ -95,12 +102,14 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 		response, err = s.HTTPClient.Post(pub.GetEndpointURI(), cloudevents.ApplicationJSON, nil)
 		if err != nil {
 			log.Printf("there was an error validating the publisher endpointurl %v, publisher won't be created.", err)
+			localmetrics.UpdatePublisherCount(localmetrics.FAILCREATE, 1)
 			respondWithError(w, err.Error())
 			return
 		}
 		defer response.Body.Close()
 		if response.StatusCode != http.StatusNoContent {
 			log.Printf("there was an error validating endpointurl %s returned status code %d", pub.GetEndpointURI(), response.StatusCode)
+			localmetrics.UpdatePublisherCount(localmetrics.FAILCREATE, 1)
 			respondWithError(w, "return url validation check failed for create publisher,check endpointURI")
 			return
 		}
@@ -112,12 +121,14 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 	newPub, err := s.pubSubAPI.CreatePublisher(pub)
 	if err != nil {
 		log.Printf("error creating publisher %v", err)
+		localmetrics.UpdatePublisherCount(localmetrics.FAILCREATE, 1)
 		respondWithError(w, err.Error())
 		return
 	}
 	log.Printf("publisher created successfully.")
 	// go ahead and create QDR to this address
 	s.sendOut(channel.SENDER, &newPub)
+	localmetrics.UpdatePublisherCount(localmetrics.ACTIVE, 1)
 	respondWithJSON(w, http.StatusCreated, newPub)
 }
 
@@ -185,10 +196,14 @@ func (s *Server) deletePublisher(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, "publisherid param is missing")
 		return
 	}
+
 	if err := s.pubSubAPI.DeletePublisher(publisherID); err != nil {
+		localmetrics.UpdatePublisherCount(localmetrics.FAILDELETE, 1)
 		respondWithError(w, err.Error())
 		return
 	}
+
+	localmetrics.UpdatePublisherCount(localmetrics.ACTIVE, -1)
 	respondWithMessage(w, http.StatusOK, "OK")
 }
 
@@ -199,25 +214,41 @@ func (s *Server) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, "subscriptionid param is missing")
 		return
 	}
+
 	if err := s.pubSubAPI.DeleteSubscription(subscriptionID); err != nil {
+		localmetrics.UpdateSubscriptionCount(localmetrics.FAILDELETE, 1)
 		respondWithError(w, err.Error())
 		return
 	}
+
+	localmetrics.UpdateSubscriptionCount(localmetrics.ACTIVE, -1)
 	respondWithMessage(w, http.StatusOK, "OK")
 }
 
 func (s *Server) deleteAllSubscriptions(w http.ResponseWriter, r *http.Request) {
+
+	size := len(s.pubSubAPI.GetSubscriptions())
 	if err := s.pubSubAPI.DeleteAllSubscriptions(); err != nil {
 		respondWithError(w, err.Error())
 		return
+	}
+	//update metrics
+	if size > 0 {
+		localmetrics.UpdateSubscriptionCount(localmetrics.ACTIVE, -(size))
 	}
 	respondWithMessage(w, http.StatusOK, "deleted all subscriptions")
 }
 
 func (s *Server) deleteAllPublishers(w http.ResponseWriter, r *http.Request) {
+	size := len(s.pubSubAPI.GetPublishers())
+
 	if err := s.pubSubAPI.DeleteAllPublishers(); err != nil {
 		respondWithError(w, err.Error())
 		return
+	}
+	//update metrics
+	if size > 0 {
+		localmetrics.UpdatePublisherCount(localmetrics.ACTIVE, -(size))
 	}
 	respondWithMessage(w, http.StatusOK, "deleted all publishers")
 }
@@ -238,12 +269,13 @@ func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 	} // check if publisher is found
 	pub, err := s.pubSubAPI.GetPublisher(cneEvent.ID)
 	if err != nil {
+		localmetrics.UpdateEventPublishedCount(cneEvent.ID, localmetrics.FAIL, 1)
 		respondWithError(w, fmt.Sprintf("no publisher data for id %s found to publish event for", cneEvent.ID))
 		return
 	}
-
 	ceEvent, err := cneEvent.NewCloudEvent(&pub)
 	if err != nil {
+		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.FAIL, 1)
 		respondWithError(w, err.Error())
 	} else {
 		s.dataOut <- &channel.DataChan{
@@ -251,6 +283,7 @@ func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 			Data:    ceEvent,
 			Address: pub.GetResource(),
 		}
+		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.SUCCESS, 1)
 		respondWithMessage(w, http.StatusAccepted, "Event sent")
 	}
 }
