@@ -239,4 +239,4 @@ Cloud native events rest API comes with following metrics collectors .
 2. Number of active subscriptions.
 3. Number of active publishers.
 
-[SDK-GO Metrics details ](docs/metrics.md)
+[Metrics details ](docs/metrics.md)
