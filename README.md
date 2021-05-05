@@ -232,3 +232,11 @@ is a flat string.
 | ---- | ---- | ----------- | -------- |
 | ValueType | ENUM | ENUMERATION,DECIMAL | yes |
 
+
+## Collecting metrics with Prometheus
+Cloud native events rest API comes with following metrics collectors .
+1. Number of events published by the rest api.
+2. Number of active subscriptions.
+3. Number of active publishers.
+
+[SDK-GO Metrics details ](docs/metrics.md)
