@@ -336,6 +336,6 @@ func (s *Server) Start() {
 
 // Shutdown ... shutdown rest service api, but it will not close until close chan is called
 func (s *Server) Shutdown() {
-	log.Warnf("trying to shut down rest api sever, please use close channel to shutdown ")
+	log.Warnf("trying to shutdown rest api sever, please use close channel to shutdown ")
 	s.httpServer.Close()
 }
