@@ -21,7 +21,9 @@ package restapi
 
 import (
 	"fmt"
-	"net"
+
+	"github.com/redhat-cne/sdk-go/pkg/util/wait"
+
 	"sync"
 
 	"github.com/gorilla/mux"
@@ -31,11 +33,12 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	pubsubv1 "github.com/redhat-cne/sdk-go/v1/pubsub"
 
-	log "github.com/sirupsen/logrus"
 	"io"
 	"net/http"
 	"strings"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 var once sync.Once
@@ -59,7 +62,7 @@ type Server struct {
 	apiPath string
 	//data out is amqp in channel
 	dataOut    chan<- *channel.DataChan
-	closeCh    <-chan bool
+	closeCh    <-chan struct{}
 	HTTPClient *http.Client
 	httpServer *http.Server
 	pubSubAPI  *pubsubv1.API
@@ -111,7 +114,7 @@ type swaggReqAccepted struct { //nolint:deadcode,unused
 }
 
 // InitServer is used to supply configurations for rest routes server
-func InitServer(port int, apiPath, storePath string, dataOut chan<- *channel.DataChan, closeCh <-chan bool) *Server {
+func InitServer(port int, apiPath, storePath string, dataOut chan<- *channel.DataChan, closeCh <-chan struct{}) *Server {
 	once.Do(func() {
 		ServerInstance = &Server{
 			port:    port,
@@ -181,7 +184,7 @@ func (s *Server) GetHostPath() *types.URI {
 }
 
 // Start will start res routes service
-func (s *Server) Start(wg *sync.WaitGroup) {
+func (s *Server) Start() {
 	if s.status == started || s.status == starting {
 		log.Infof("Server is already running at port %d", s.port)
 		return
@@ -315,44 +318,24 @@ func (s *Server) Start(wg *sync.WaitGroup) {
 		fmt.Fprintln(w, r)
 	})
 
-	log.Print("Started Rest API Server")
-	log.Printf("endpoint %s", s.apiPath)
-
-	s.httpServer = &http.Server{
-		Addr:    fmt.Sprintf(":%d", s.port),
-		Handler: api,
-	}
-	/*go func() {
-		<-s.closeCh
-		s.httpServer.Close()
-	}()*/
-	//if port is undecided then let get first available port
-	var httpError error
-	if s.port == 0 {
-		listener, err := net.Listen("tcp", ":0")
-		if err != nil {
-			panic(err)
+	log.Info("starting rest api server")
+	log.Infof("endpoint %s", s.apiPath)
+	go wait.Until(func() {
+		s.status = started
+		s.httpServer = &http.Server{
+			Addr:    fmt.Sprintf(":%d", s.port),
+			Handler: api,
 		}
-		log.Println("Using port:", listener.Addr().(*net.TCPAddr).Port)
-		s.port = listener.Addr().(*net.TCPAddr).Port
-		s.httpServer.Addr = fmt.Sprintf("%d", s.port)
-		s.status = started
-		httpError = s.httpServer.Serve(listener)
-	} else {
-		s.status = started
-		httpError = s.httpServer.ListenAndServe()
-	}
-
-	if httpError != nil {
-		log.Errorf("while serving HTTP: %v\n ", httpError)
-		s.status = failed
-	} else {
-		log.Infof("service ready to server at %s: ", s.GetHostPath())
-	}
+		err := s.httpServer.ListenAndServe()
+		if err != nil {
+			log.Errorf("restarting due to error with api server %s\n", err.Error())
+			s.status = failed
+		}
+	}, 1*time.Second, s.closeCh)
 }
 
-// Shutdown ... shutdown rest service api
+// Shutdown ... shutdown rest service api, but it will not close until close chan is called
 func (s *Server) Shutdown() {
-	log.Warnf("shutting down rest api sever")
+	log.Warnf("trying to shut down rest api sever, please use close channel to shutdown ")
 	s.httpServer.Close()
 }

@@ -19,13 +19,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"sync"
 	"testing"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/redhat-cne/rest-api"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
@@ -40,9 +41,9 @@ var (
 	server *restapi.Server
 
 	eventOutCh chan *channel.DataChan
-	closeCh    chan bool
+	closeCh    chan struct{}
 	wg         sync.WaitGroup
-	port       int    = 0
+	port       int    = 8989
 	apPath     string = "/routes/cne/v1/"
 	resource   string = "test/test"
 	storePath  string = "."
@@ -52,24 +53,21 @@ var (
 
 func init() {
 	eventOutCh = make(chan *channel.DataChan, 10)
-	closeCh = make(chan bool)
+	closeCh = make(chan struct{})
 }
 
 func TestMain(m *testing.M) {
 	server = restapi.InitServer(port, apPath, storePath, eventOutCh, closeCh)
 	//start http server
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		server.Start(&wg)
-	}()
+	server.Start()
+
 	wg.Add(1)
 	go func() {
 		for d := range eventOutCh {
-			log.Printf("incoming data %#v", d)
+			log.Infof("incoming data %#v", d)
 		}
 	}()
-	time.Sleep(3 * time.Second)
+	time.Sleep(2 * time.Second)
 	port = server.Port()
 	exitVal := m.Run()
 	os.Exit(exitVal)
@@ -120,7 +118,7 @@ func TestServer_CreateSubscription(t *testing.T) {
 	assert.NotEmpty(t, ObjSub.EndPointURI)
 	assert.NotEmpty(t, ObjSub.Resource)
 	assert.Equal(t, sub.Resource, ObjSub.Resource)
-	log.Printf("Subscription:\n%s", ObjSub.String())
+	log.Infof("Subscription:\n%s", ObjSub.String())
 }
 
 func TestServer_GetSubscription(t *testing.T) {
@@ -136,10 +134,8 @@ func TestServer_GetSubscription(t *testing.T) {
 	rSub := api.New()
 	err = json.Unmarshal(bodyBytes, &rSub)
 	if e, ok := err.(*json.SyntaxError); ok {
-		log.Printf("syntax error at byte offset %d", e.Offset)
+		log.Infof("syntax error at byte offset %d", e.Offset)
 	}
-	bodyString := string(bodyBytes)
-	log.Print(bodyString)
 	assert.Nil(t, err)
 	assert.Equal(t, rSub.ID, ObjSub.ID)
 }
@@ -166,16 +162,13 @@ func TestServer_CreatePublisher(t *testing.T) {
 	assert.Nil(t, err)
 	err = json.Unmarshal(pubBodyBytes, &ObjPub)
 	assert.Nil(t, err)
-
-	pubBodyString := string(pubBodyBytes)
-	log.Print(pubBodyString)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 	assert.NotEmpty(t, ObjPub.ID)
 	assert.NotEmpty(t, ObjPub.URILocation)
 	assert.NotEmpty(t, ObjPub.EndPointURI)
 	assert.NotEmpty(t, ObjPub.Resource)
 	assert.Equal(t, pub.Resource, ObjPub.Resource)
-	log.Printf("Publisher \n%s", ObjPub.String())
+	log.Infof("publisher \n%s", ObjPub.String())
 }
 
 func TestServer_GetPublisher(t *testing.T) {
@@ -311,8 +304,24 @@ func TestServer_TestDummyStatusCode(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
 }
 
+func TestServer_KillAndRecover(t *testing.T) {
+	server.Shutdown()
+	time.Sleep(2*time.Second)
+	// CHECK URL IS UP
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "health"), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+}
+
 func TestServer_End(t *testing.T) {
 	close(eventOutCh)
 	close(closeCh)
-
 }
