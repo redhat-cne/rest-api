@@ -306,7 +306,7 @@ func TestServer_TestDummyStatusCode(t *testing.T) {
 
 func TestServer_KillAndRecover(t *testing.T) {
 	server.Shutdown()
-	time.Sleep(2*time.Second)
+	time.Sleep(2 * time.Second)
 	// CHECK URL IS UP
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
