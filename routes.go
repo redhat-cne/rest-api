@@ -17,6 +17,7 @@ package restapi
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/redhat-cne/rest-api/pkg/localmetrics"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
@@ -267,7 +268,7 @@ func (s *Server) deleteAllPublishers(w http.ResponseWriter, r *http.Request) {
 	respondWithMessage(w, http.StatusOK, "deleted all publishers")
 }
 
-// publishEvent gets cloud native events and converts it to cloud native event and publishes to a transport to send
+// publishEvent gets a cloud native event and converts it to cloud event and publishes to a transport to send
 //it to the consumer
 func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
