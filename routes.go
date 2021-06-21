@@ -17,6 +17,7 @@ package restapi
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/redhat-cne/rest-api/pkg/localmetrics"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
@@ -25,6 +26,7 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 
 	"github.com/redhat-cne/sdk-go/v1/event"
+	v1hwevent "github.com/redhat-cne/sdk-go/v1/hwevent"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -267,7 +269,7 @@ func (s *Server) deleteAllPublishers(w http.ResponseWriter, r *http.Request) {
 	respondWithMessage(w, http.StatusOK, "deleted all publishers")
 }
 
-// publishEvent gets cloud native events and converts it to cloud native event and publishes to a transport to send
+// publishEvent gets cloud native events and converts it to cloud event and publishes to a transport to send
 //it to the consumer
 func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
@@ -288,6 +290,43 @@ func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ceEvent, err := cneEvent.NewCloudEvent(&pub)
+	if err != nil {
+		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.FAIL, 1)
+		respondWithError(w, err.Error())
+	} else {
+		s.dataOut <- &channel.DataChan{
+			Type:    channel.EVENT,
+			Data:    ceEvent,
+			Address: pub.GetResource(),
+		}
+		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.SUCCESS, 1)
+		respondWithMessage(w, http.StatusAccepted, "Event sent")
+	}
+}
+
+// publishEvent gets cloud native events and converts it to cloud event and publishes to a transport to send
+//it to the consumer
+func (s *Server) publishHwEvent(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	bodyBytes, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		respondWithError(w, err.Error())
+		return
+	}
+	//	cneEvent := event.CloudNativeEvent()
+	hwEvent := v1hwevent.CloudNativeEvent()
+	if err = json.Unmarshal(bodyBytes, &hwEvent); err != nil {
+		respondWithError(w, err.Error())
+		return
+	} // check if publisher is found
+	pub, err := s.pubSubAPI.GetPublisher(hwEvent.ID)
+	if err != nil {
+		localmetrics.UpdateEventPublishedCount(hwEvent.ID, localmetrics.FAIL, 1)
+		respondWithError(w, fmt.Sprintf("no publisher data for id %s found to publish event for", hwEvent.ID))
+		return
+	}
+	ceEvent, err := hwEvent.NewCloudEvent(&pub)
+	log.Printf("DZK created Cloud Event %v", ceEvent)
 	if err != nil {
 		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.FAIL, 1)
 		respondWithError(w, err.Error())

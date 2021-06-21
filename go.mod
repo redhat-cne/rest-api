@@ -7,8 +7,11 @@ require (
 	github.com/google/uuid v1.2.0
 	github.com/gorilla/mux v1.8.0
 	github.com/prometheus/client_golang v1.10.0
-	github.com/redhat-cne/sdk-go v0.0.0-20210514165344-d1a7d7921d8d
+//	github.com/redhat-cne/sdk-go v0.0.0-20210514165344-d1a7d7921d8d
+	github.com/redhat-cne/sdk-go v0.0.0-unpublished
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/net v0.0.0-20210510120150-4163338589ed
 )
+
+replace github.com/redhat-cne/sdk-go v0.0.0-unpublished => ../sdk-go
