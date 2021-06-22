@@ -313,7 +313,6 @@ func (s *Server) publishHwEvent(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, err.Error())
 		return
 	}
-	//	cneEvent := event.CloudNativeEvent()
 	hwEvent := v1hwevent.CloudNativeEvent()
 	if err = json.Unmarshal(bodyBytes, &hwEvent); err != nil {
 		respondWithError(w, err.Error())
@@ -326,7 +325,6 @@ func (s *Server) publishHwEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ceEvent, err := hwEvent.NewCloudEvent(&pub)
-	log.Printf("DZK created Cloud Event %v", ceEvent)
 	if err != nil {
 		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.FAIL, 1)
 		respondWithError(w, err.Error())
