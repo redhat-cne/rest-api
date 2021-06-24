@@ -270,7 +270,7 @@ func (s *Server) deleteAllPublishers(w http.ResponseWriter, r *http.Request) {
 }
 
 // publishEvent gets cloud native events and converts it to cloud event and publishes to a transport to send
-//it to the consumer
+// it to the consumer
 func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	bodyBytes, err := ioutil.ReadAll(r.Body)
@@ -304,8 +304,8 @@ func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// publishEvent gets cloud native events and converts it to cloud event and publishes to a transport to send
-//it to the consumer
+// publishHwEvent gets hardware events and converts it to cloud event and publishes to a transport to send
+// it to the consumer
 func (s *Server) publishHwEvent(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	bodyBytes, err := ioutil.ReadAll(r.Body)
