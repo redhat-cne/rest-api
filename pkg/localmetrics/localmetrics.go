@@ -38,7 +38,7 @@ var (
 	//eventPublishedCount ...  Total no of events published by the api
 	eventPublishedCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cne_events_api_published",
+			Name: "cne_api_events_published",
 			Help: "Metric to get number of events published by the rest api",
 		}, []string{"address", "status"})
 
@@ -55,6 +55,13 @@ var (
 			Name: "cne_api_publishers",
 			Help: "Metric to get number of publishers",
 		}, []string{"status"})
+
+	//statusCallCount ...  Total no of status check was made
+	statusCallCount = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cne_api_status_ping",
+			Help: "Metric to get number of status call",
+		}, []string{"status"})
 )
 
 // RegisterMetrics ... register metrics
@@ -62,6 +69,7 @@ func RegisterMetrics() {
 	prometheus.MustRegister(eventPublishedCount)
 	prometheus.MustRegister(subscriptionCount)
 	prometheus.MustRegister(publisherCount)
+	prometheus.MustRegister(statusCallCount)
 }
 
 // UpdateEventPublishedCount ...
@@ -79,5 +87,11 @@ func UpdateSubscriptionCount(status MetricStatus, val int) {
 // UpdatePublisherCount ...
 func UpdatePublisherCount(status MetricStatus, val int) {
 	publisherCount.With(
+		prometheus.Labels{"status": string(status)}).Add(float64(val))
+}
+
+// UpdateStatusCount ...
+func UpdateStatusCount(address string,status MetricStatus, val int) {
+	statusCallCount.With(
 		prometheus.Labels{"status": string(status)}).Add(float64(val))
 }

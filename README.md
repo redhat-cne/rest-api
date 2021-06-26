@@ -97,6 +97,29 @@ If publisher is present for the event, then event creation is success and be ret
 | 202 | Accepted | object |
 | 400 | Error Bad Request | object |
 
+### /request/status
+
+#### POST
+##### Summary
+
+Creates a new status request.
+
+##### Description
+
+If publisher is present for the request, then status request is success and be returned with Accepted (202).
+
+##### Parameters
+
+| Name | Located in | Description | Required | Schema |
+| ---- | ---------- | ----------- | -------- | ---- |
+| event | body | event along with publisher id | Yes | [Event](#event) |
+
+##### Responses
+
+| Code | Description | Schema |
+| ---- | ----------- | ------ |
+| 202 | Accepted | object |
+| 400 | Error Bad Request | object |
 
 ### Models
 

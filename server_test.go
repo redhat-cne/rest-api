@@ -26,6 +26,9 @@ import (
 	"testing"
 	"time"
 
+	event3 "github.com/redhat-cne/sdk-go/pkg/event"
+	event2 "github.com/redhat-cne/sdk-go/v1/event"
+
 	log "github.com/sirupsen/logrus"
 
 	"github.com/redhat-cne/rest-api"
@@ -321,7 +324,142 @@ func TestServer_KillAndRecover(t *testing.T) {
 
 }
 
+// New get new rest client
+func NewRestClient() *Rest {
+	return &Rest{
+		client: http.Client{
+			Timeout: 1 * time.Second,
+		},
+	}
+}
+
+func publishEvent(e event3.Event) {
+	//create publisher
+	url := &types.URI{URL: url.URL{Scheme: "http",
+		Host: fmt.Sprintf("localhost:%d", port),
+		Path: fmt.Sprintf("%s%s", apPath, "create/event")}}
+	rc := NewRestClient()
+	err := rc.PostEvent(url, e)
+	if err != nil {
+		log.Errorf("error publishing events %v to url %s", err, url.String())
+	} else {
+		log.Debugf("published event %s", e.ID)
+	}
+}
+
+func Test_MultiplePost(t *testing.T) {
+	pub := pubsub.PubSub{
+		ID:          "",
+		EndPointURI: &types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", port), Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
+		Resource:    resource,
+	}
+	pubData, err := json.Marshal(&pub)
+	assert.Nil(t, err)
+	assert.NotNil(t, pubData)
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "publishers"), bytes.NewBuffer(pubData))
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer func() {
+		if resp != nil {
+			resp.Body.Close()
+		}
+
+	}()
+	pubBodyBytes, err := ioutil.ReadAll(resp.Body)
+	assert.Nil(t, err)
+	err = json.Unmarshal(pubBodyBytes, &ObjPub)
+	assert.Nil(t, err)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	assert.NotEmpty(t, ObjPub.ID)
+	assert.NotEmpty(t, ObjPub.URILocation)
+	assert.NotEmpty(t, ObjPub.EndPointURI)
+	assert.NotEmpty(t, ObjPub.Resource)
+	assert.Equal(t, pub.Resource, ObjPub.Resource)
+	log.Infof("publisher \n%s", ObjPub.String())
+
+	cneEvent := event2.CloudNativeEvent()
+	cneEvent.SetID(ObjPub.ID)
+	cneEvent.Type = "ptp_status_type"
+	cneEvent.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
+	cneEvent.SetDataContentType(event3.ApplicationJSON)
+	data := event3.Data{
+		Version: "event3",
+		Values: []event3.DataValue{{
+			Resource:  "test",
+			DataType:  event3.NOTIFICATION,
+			ValueType: event3.ENUMERATION,
+			Value:     event3.ACQUIRING_SYNC,
+		},
+		},
+	}
+	data.SetVersion("v1") //nolint:errcheck
+	cneEvent.SetData(data)
+	for i := 0; i < 5; i++ {
+		go publishEvent(cneEvent)
+	}
+	time.Sleep(2 * time.Second)
+}
+
 func TestServer_End(t *testing.T) {
 	close(eventOutCh)
 	close(closeCh)
+}
+
+// Rest client to make http request
+type Rest struct {
+	client http.Client
+}
+
+// Post post with data
+func (r *Rest) Post(url *types.URI, data []byte) int {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, "POST", url.String(), bytes.NewBuffer(data))
+	if err != nil {
+		log.Errorf("error creating post request %v", err)
+		return http.StatusBadRequest
+	}
+	request.Header.Set("content-type", "application/json")
+	response, err := r.client.Do(request)
+	if err != nil {
+		log.Errorf("error in post response %v", err)
+		return http.StatusBadRequest
+	}
+	if response.Body != nil {
+		defer response.Body.Close()
+		// read any content and print
+		body, readErr := ioutil.ReadAll(response.Body)
+		if readErr == nil && len(body) > 0 {
+			log.Debugf("%s return response %s\n", url.String(), string(body))
+		}
+	}
+	return response.StatusCode
+}
+
+// New get new rest client
+func New() *Rest {
+	return &Rest{
+		client: http.Client{
+			Timeout: 1 * time.Second,
+		},
+	}
+}
+
+// PostEvent post an event to the give url and check for error
+func (r *Rest) PostEvent(url *types.URI, e event3.Event) error {
+	b, err := json.Marshal(e)
+	if err != nil {
+		log.Errorf("error marshalling event %v", e)
+		return err
+	}
+	if status := r.Post(url, b); status == http.StatusBadRequest {
+		return fmt.Errorf("post returned status %d", status)
+	}
+	return nil
 }

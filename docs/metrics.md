@@ -30,19 +30,20 @@ All these metrics are prefixed with `cne_`
 
 | Name                                                  | Description                                              | Type    |
 |-------------------------------------------------------|----------------------------------------------------------|---------|
-| cne_events_api_published          | Metric to get number of events published by the rest api.   | Gauge |
+| cne_api_events_published          | Metric to get number of events published by the rest api.   | Gauge |
 | cne_api_subscriptions     | Metric to get number of subscriptions.  | Gauge   |
 | cne_api_publishers     | Metric to get number of publishers.  | Gauge   |
+| cne_api_status_ping | Metric to get number of status pings. | Gauge | 
 
 
-`cne_events_api_published` -  The number of events published via rest-api, and their status by address.
+`cne_api_events_published` -  The number of events published via rest-api, and their status by address.
 
 Example
 ```json 
-# HELP cne_events_api_published Metric to get number of events published by the rest api
-# TYPE cne_events_api_published gauge
-cne_events_api_published{address="/news-service/finance",status="success"} 9
-cne_events_api_published{address="/news-service/sports",status="success"} 9
+# HELP cne_api_events_published Metric to get number of events published by the rest api
+# TYPE cne_api_events_published gauge
+cne_api_events_published{address="/news-service/finance",status="success"} 9
+cne_api_events_published{address="/news-service/sports",status="success"} 9
 ```
 
 `cne_api_subscriptions` -  This metrics indicates number of subscriptions that are active.
@@ -63,5 +64,13 @@ Example
 cne_api_publishers{status="active"} 2
 ```
 
+`cne_api_status_ping` -  This metrics indicates number of status pings were made
+
+Example
+```json
+# HELP cne_status_api_ping Metric to get number of status pings
+# TYPE cne_api_status_ping gauge
+cne_api_status_ping{status="active"} 2
+```
 
 
