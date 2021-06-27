@@ -298,13 +298,11 @@ func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.FAIL, 1)
 		respondWithError(w, err.Error())
 	} else {
-		log.Printf("sending to channel")
 		s.dataOut <- &channel.DataChan{
 			Type:    channel.EVENT,
 			Data:    ceEvent,
 			Address: pub.GetResource(),
 		}
-		log.Printf("SENT to channel")
 		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.SUCCESS, 1)
 		respondWithMessage(w, http.StatusAccepted, "Event sent")
 	}
