@@ -97,6 +97,29 @@ If publisher is present for the event, then event creation is success and be ret
 | 202 | Accepted | object |
 | 400 | Error Bad Request | object |
 
+### /subscriptions/status/{subscriptionid}
+
+#### PUT
+##### Summary
+
+Creates a new status ping request.
+
+##### Description
+
+If a subscription is present for the request, then status request is success and be returned with Accepted (202).
+
+##### Parameters
+
+| Name | Located in | Description | Required | Schema |
+| ---- | ---------- | ----------- | -------- | ---- |
+| subscriptionid | request  | subscription id | Yes |  |
+
+##### Responses
+
+| Code | Description | Schema |
+| ---- | ----------- | ------ |
+| 202 | Accepted | object |
+| 400 | Error Bad Request | object |
 
 ### Models
 

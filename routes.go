@@ -17,12 +17,16 @@ package restapi
 import (
 	"encoding/json"
 	"fmt"
+	"time"
+
+	"github.com/redhat-cne/sdk-go/pkg/types"
 
 	"github.com/redhat-cne/rest-api/pkg/localmetrics"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	ce "github.com/cloudevents/sdk-go/v2/event"
 
+	cne "github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 
 	"github.com/redhat-cne/sdk-go/v1/event"
@@ -131,9 +135,9 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// check sub.EndpointURI by get
+	// check pub.EndpointURI by get
 	pub.SetID(uuid.New().String())
-	_ = pub.SetURILocation(fmt.Sprintf("http://localhost:%d%s%s/%s", s.port, s.apiPath, "subscriptions", pub.ID)) //nolint:errcheck
+	_ = pub.SetURILocation(fmt.Sprintf("http://localhost:%d%s%s/%s", s.port, s.apiPath, "publishers", pub.ID)) //nolint:errcheck
 	newPub, err := s.pubSubAPI.CreatePublisher(pub)
 	if err != nil {
 		log.Printf("error creating publisher %v", err)
@@ -352,13 +356,23 @@ func (s *Server) pingForSubscribedEventStatus(w http.ResponseWriter, r *http.Req
 		respondWithError(w, "subscription not found")
 		return
 	}
+	cneEvent := event.CloudNativeEvent()
+	cneEvent.SetID(sub.ID)
+	cneEvent.Type = "status_check"
+	cneEvent.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
+	cneEvent.SetDataContentType(cloudevents.ApplicationJSON)
+	cneEvent.SetData(cne.Data{
+		Version: "v1",
+	})
+	ceEvent, err := cneEvent.NewCloudEvent(&sub)
 
 	if err != nil {
 		respondWithError(w, err.Error())
 	} else {
 		s.dataOut <- &channel.DataChan{
-			Type:    channel.EVENT,
-			Address: sub.GetResource(),
+			Type:    channel.STATUS,
+			Data:    ceEvent,
+			Address: fmt.Sprintf("%s/%s", sub.GetResource(), "status"),
 		}
 		respondWithMessage(w, http.StatusAccepted, "ping sent")
 	}
