@@ -26,8 +26,9 @@ import (
 	"testing"
 	"time"
 
-	event3 "github.com/redhat-cne/sdk-go/pkg/event"
-	event2 "github.com/redhat-cne/sdk-go/v1/event"
+	event "github.com/redhat-cne/sdk-go/pkg/event"
+	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
+	v1event "github.com/redhat-cne/sdk-go/v1/event"
 
 	log "github.com/sirupsen/logrus"
 
@@ -333,7 +334,7 @@ func NewRestClient() *Rest {
 	}
 }
 
-func publishEvent(e event3.Event) {
+func publishEvent(e event.Event) {
 	//create publisher
 	url := &types.URI{URL: url.URL{Scheme: "http",
 		Host: fmt.Sprintf("localhost:%d", port),
@@ -382,18 +383,18 @@ func Test_MultiplePost(t *testing.T) {
 	assert.Equal(t, pub.Resource, ObjPub.Resource)
 	log.Infof("publisher \n%s", ObjPub.String())
 
-	cneEvent := event2.CloudNativeEvent()
+	cneEvent := v1event.CloudNativeEvent()
 	cneEvent.SetID(ObjPub.ID)
-	cneEvent.Type = "ptp_status_type"
+	cneEvent.Type = string(ptp.PtpStateChange)
 	cneEvent.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
-	cneEvent.SetDataContentType(event3.ApplicationJSON)
-	data := event3.Data{
-		Version: "event3",
-		Values: []event3.DataValue{{
+	cneEvent.SetDataContentType(event.ApplicationJSON)
+	data := event.Data{
+		Version: "event",
+		Values: []event.DataValue{{
 			Resource:  "test",
-			DataType:  event3.NOTIFICATION,
-			ValueType: event3.ENUMERATION,
-			Value:     event3.ACQUIRING_SYNC,
+			DataType:  event.NOTIFICATION,
+			ValueType: event.ENUMERATION,
+			Value:     ptp.ACQUIRING_SYNC,
 		},
 		},
 	}
@@ -452,7 +453,7 @@ func New() *Rest {
 }
 
 // PostEvent post an event to the give url and check for error
-func (r *Rest) PostEvent(url *types.URI, e event3.Event) error {
+func (r *Rest) PostEvent(url *types.URI, e event.Event) error {
 	b, err := json.Marshal(e)
 	if err != nil {
 		log.Errorf("error marshalling event %v", e)

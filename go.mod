@@ -7,7 +7,7 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
 	github.com/prometheus/client_golang v1.11.0
-	github.com/redhat-cne/sdk-go v0.1.1-0.20210903133956-db900ea5e2cf
+	github.com/redhat-cne/sdk-go v0.1.1-0.20211130185743-65c3912ba066
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	go.uber.org/zap v1.13.0 // indirect
