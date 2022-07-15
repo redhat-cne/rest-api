@@ -16,5 +16,7 @@
 cover.out
 pub.json
 sub.json
+publisher-api/pub.json
+subscription-api/sub.json
 
 .idea
