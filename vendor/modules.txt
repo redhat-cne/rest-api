@@ -71,7 +71,7 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/redhat-cne/sdk-go v0.1.1-0.20220809012624-c063932e639c => github.com/redhat-cne/sdk-go v0.1.1-0.20220809012624-c063932e639c
+# github.com/redhat-cne/sdk-go v0.1.1-0.20220822193014-8b3ad5ad0a44
 ## explicit; go 1.17
 github.com/redhat-cne/sdk-go/pkg/channel
 github.com/redhat-cne/sdk-go/pkg/event
@@ -197,4 +197,3 @@ honnef.co/go/tools/staticcheck/vrp
 honnef.co/go/tools/stylecheck
 honnef.co/go/tools/unused
 honnef.co/go/tools/version
-# github.com/redhat-cne/sdk-go => github.com/redhat-cne/sdk-go v0.1.1-0.20220809012624-c063932e639c
