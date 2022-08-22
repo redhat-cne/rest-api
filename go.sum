@@ -123,6 +123,8 @@ github.com/prometheus/procfs v0.6.0 h1:mxy4L2jP6qMonqmq+aTtOx1ifVWUgG/TAmntgbh3x
 github.com/prometheus/procfs v0.6.0/go.mod h1:cz+aTbrPOrUb4q7XlbU9ygM+/jj0fzG6c1xBZuNvfVA=
 github.com/redhat-cne/sdk-go v0.1.1-0.20220809012624-c063932e639c h1:9Hfcnj8odiCi1Pzzia8QaMMa8rg/UNjsIAWgd74Xu20=
 github.com/redhat-cne/sdk-go v0.1.1-0.20220809012624-c063932e639c/go.mod h1:oiSLb2ub22f7hLZshVwzER4VgY8Q0gkdtD6j5bAbWVc=
+github.com/redhat-cne/sdk-go v0.1.1-0.20220822193014-8b3ad5ad0a44 h1:Q25tm6EiPoqJyMIxibNmU7ABKaAbOw0TAIMUjWOTbHA=
+github.com/redhat-cne/sdk-go v0.1.1-0.20220822193014-8b3ad5ad0a44/go.mod h1:oiSLb2ub22f7hLZshVwzER4VgY8Q0gkdtD6j5bAbWVc=
 github.com/rogpeppe/go-internal v1.3.0/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFRclV5y23lUDJ4=
 github.com/sirupsen/logrus v1.2.0/go.mod h1:LxeOpSwHxABJmUn/MG1IvRgCAasNZTLOkJPxbbu5VWo=
 github.com/sirupsen/logrus v1.4.2/go.mod h1:tLMulIdttU9McNUspp0xgXVQah82FyeX6MwdIuYE2rE=
