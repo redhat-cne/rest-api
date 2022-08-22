@@ -26,17 +26,15 @@ import (
 	"testing"
 	"time"
 
-	event "github.com/redhat-cne/sdk-go/pkg/event"
-	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
-	v1event "github.com/redhat-cne/sdk-go/v1/event"
-
-	log "github.com/sirupsen/logrus"
-
-	"github.com/redhat-cne/rest-api"
+	restapi "github.com/redhat-cne/rest-api"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
+	"github.com/redhat-cne/sdk-go/pkg/event"
+	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
+	v1event "github.com/redhat-cne/sdk-go/v1/event"
 	api "github.com/redhat-cne/sdk-go/v1/pubsub"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
 )
@@ -322,7 +320,6 @@ func TestServer_KillAndRecover(t *testing.T) {
 	assert.Nil(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-
 }
 
 // New get new rest client
@@ -369,7 +366,6 @@ func Test_MultiplePost(t *testing.T) {
 		if resp != nil {
 			resp.Body.Close()
 		}
-
 	}()
 	pubBodyBytes, err := ioutil.ReadAll(resp.Body)
 	assert.Nil(t, err)
