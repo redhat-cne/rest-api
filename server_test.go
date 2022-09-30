@@ -26,6 +26,10 @@ import (
 	"testing"
 	"time"
 
+	cloudevents "github.com/cloudevents/sdk-go/v2"
+	types2 "github.com/cloudevents/sdk-go/v2/types"
+	"github.com/google/uuid"
+
 	restapi "github.com/redhat-cne/rest-api"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	"github.com/redhat-cne/sdk-go/pkg/event"
@@ -42,15 +46,17 @@ import (
 var (
 	server *restapi.Server
 
-	eventOutCh chan *channel.DataChan
-	closeCh    chan struct{}
-	wg         sync.WaitGroup
-	port       int    = 8989
-	apPath     string = "/routes/cne/v1/"
-	resource   string = "test/test"
-	storePath  string = "."
-	ObjSub     pubsub.PubSub
-	ObjPub     pubsub.PubSub
+	eventOutCh       chan *channel.DataChan
+	closeCh          chan struct{}
+	wg               sync.WaitGroup
+	port             int    = 8989
+	apPath           string = "/routes/cne/v1/"
+	resource         string = "test/test"
+	storePath        string = "."
+	ObjSub           pubsub.PubSub
+	ObjPub           pubsub.PubSub
+	transportType    = "HTTP"
+	transportAddress = "localhost"
 )
 
 func init() {
@@ -59,13 +65,57 @@ func init() {
 }
 
 func TestMain(m *testing.M) {
-	server = restapi.InitServer(port, apPath, storePath, eventOutCh, closeCh)
+	server = restapi.InitServer(port, apPath, storePath, transportType, transportAddress, eventOutCh, closeCh)
 	//start http server
 	server.Start()
 
 	wg.Add(1)
 	go func() {
 		for d := range eventOutCh {
+			if d.Type == channel.STATUS && d.StatusChan != nil {
+				log.Info("WHY HERE")
+				clientID, _ := uuid.Parse("123e4567-e89b-12d3-a456-426614174001")
+				cneEvent := v1event.CloudNativeEvent()
+				cneEvent.SetID(ObjPub.ID)
+				cneEvent.Type = string(ptp.PtpStateChange)
+				cneEvent.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
+				cneEvent.SetDataContentType(event.ApplicationJSON)
+				data := event.Data{
+					Version: "event",
+					Values: []event.DataValue{{
+						Resource:  "test",
+						DataType:  event.NOTIFICATION,
+						ValueType: event.ENUMERATION,
+						Value:     ptp.ACQUIRING_SYNC,
+					},
+					},
+				}
+				data.SetVersion("v1") //nolint:errcheck
+				cneEvent.SetData(data)
+				e := cloudevents.Event{
+					Context: cloudevents.EventContextV1{
+						Type:       string(ptp.PtpStateChange),
+						Source:     cloudevents.URIRef{URL: url.URL{Scheme: "http", Host: "example.com", Path: "/source"}},
+						ID:         "status event",
+						Time:       &cloudevents.Timestamp{Time: time.Date(2020, 03, 21, 12, 34, 56, 780000000, time.UTC)},
+						DataSchema: &types2.URI{URL: url.URL{Scheme: "http", Host: "example.com", Path: "/schema"}},
+						Subject:    func(s string) *string { return &s }("topic"),
+					}.AsV1(),
+				}
+				_ = e.SetData(cloudevents.ApplicationJSON, cneEvent)
+				func() {
+					defer func() {
+						if err := recover(); err != nil {
+							log.Errorf("error on clsoe channel")
+						}
+					}()
+					d.StatusChan <- &channel.StatusChan{
+						ID:       "123",
+						ClientID: clientID,
+						Data:     &e,
+					}
+				}()
+			}
 			log.Infof("incoming data %#v", d)
 		}
 	}()
@@ -229,6 +279,22 @@ func TestServer_ListPublishers(t *testing.T) {
 	assert.Nil(t, err)
 	defer resp.Body.Close()
 	assert.Greater(t, len(pubList), 0)
+}
+
+func TestServer_GetCurrentState(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	time.Sleep(2 * time.Second)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, resource, "CurrentState"), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	_, err = ioutil.ReadAll(resp.Body)
+	assert.Nil(t, err)
 }
 
 func TestServer_TestPingStatusStatusCode(t *testing.T) {
