@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -46,17 +46,15 @@ import (
 var (
 	server *restapi.Server
 
-	eventOutCh       chan *channel.DataChan
-	closeCh          chan struct{}
-	wg               sync.WaitGroup
-	port             int    = 8989
-	apPath           string = "/routes/cne/v1/"
-	resource         string = "test/test"
-	storePath        string = "."
-	ObjSub           pubsub.PubSub
-	ObjPub           pubsub.PubSub
-	transportType    = "HTTP"
-	transportAddress = "localhost"
+	eventOutCh chan *channel.DataChan
+	closeCh    chan struct{}
+	wg         sync.WaitGroup
+	port       int    = 8989
+	apPath     string = "/routes/cne/v1/"
+	resource   string = "test/test"
+	storePath  string = "."
+	ObjSub     pubsub.PubSub
+	ObjPub     pubsub.PubSub
 )
 
 func init() {
@@ -65,7 +63,7 @@ func init() {
 }
 
 func TestMain(m *testing.M) {
-	server = restapi.InitServer(port, apPath, storePath, transportType, transportAddress, eventOutCh, closeCh)
+	server = restapi.InitServer(port, apPath, storePath, eventOutCh, closeCh)
 	//start http server
 	server.Start()
 
@@ -158,7 +156,7 @@ func TestServer_CreateSubscription(t *testing.T) {
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
 	defer resp.Body.Close()
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	bodyString := string(bodyBytes)
 	log.Print(bodyString)
@@ -181,7 +179,7 @@ func TestServer_GetSubscription(t *testing.T) {
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
 	defer resp.Body.Close()
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	rSub := api.New()
 	err = json.Unmarshal(bodyBytes, &rSub)
@@ -210,7 +208,7 @@ func TestServer_CreatePublisher(t *testing.T) {
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
 	defer resp.Body.Close()
-	pubBodyBytes, err := ioutil.ReadAll(resp.Body)
+	pubBodyBytes, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	err = json.Unmarshal(pubBodyBytes, &ObjPub)
 	assert.Nil(t, err)
@@ -231,7 +229,7 @@ func TestServer_GetPublisher(t *testing.T) {
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
 	defer resp.Body.Close()
-	pubBodyBytes, err := ioutil.ReadAll(resp.Body)
+	pubBodyBytes, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	var rPub pubsub.PubSub
 	log.Printf("the data %s", string(pubBodyBytes))
@@ -252,7 +250,7 @@ func TestServer_ListSubscriptions(t *testing.T) {
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
 	defer resp.Body.Close() // Close body only if response non-nil
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	var subList []pubsub.PubSub
 	log.Printf("TestServer_ListSubscriptions :%s\n", string(bodyBytes))
@@ -272,7 +270,7 @@ func TestServer_ListPublishers(t *testing.T) {
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
 	defer resp.Body.Close()
-	pubBodyBytes, err := ioutil.ReadAll(resp.Body)
+	pubBodyBytes, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	var pubList []pubsub.PubSub
 	err = json.Unmarshal(pubBodyBytes, &pubList)
@@ -293,7 +291,7 @@ func TestServer_GetCurrentState(t *testing.T) {
 	assert.Nil(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	_, err = ioutil.ReadAll(resp.Body)
+	_, err = io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 }
 
@@ -433,7 +431,7 @@ func Test_MultiplePost(t *testing.T) {
 			resp.Body.Close()
 		}
 	}()
-	pubBodyBytes, err := ioutil.ReadAll(resp.Body)
+	pubBodyBytes, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	err = json.Unmarshal(pubBodyBytes, &ObjPub)
 	assert.Nil(t, err)
@@ -497,7 +495,7 @@ func (r *Rest) Post(url *types.URI, data []byte) int {
 	if response.Body != nil {
 		defer response.Body.Close()
 		// read any content and print
-		body, readErr := ioutil.ReadAll(response.Body)
+		body, readErr := io.ReadAll(response.Body)
 		if readErr == nil && len(body) > 0 {
 			log.Debugf("%s return response %s\n", url.String(), string(body))
 		}
