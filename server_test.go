@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -26,17 +26,19 @@ import (
 	"testing"
 	"time"
 
-	event "github.com/redhat-cne/sdk-go/pkg/event"
-	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
-	v1event "github.com/redhat-cne/sdk-go/v1/event"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
+	types2 "github.com/cloudevents/sdk-go/v2/types"
+	"github.com/google/uuid"
 
-	log "github.com/sirupsen/logrus"
-
-	"github.com/redhat-cne/rest-api"
+	restapi "github.com/redhat-cne/rest-api"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
+	"github.com/redhat-cne/sdk-go/pkg/event"
+	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
+	v1event "github.com/redhat-cne/sdk-go/v1/event"
 	api "github.com/redhat-cne/sdk-go/v1/pubsub"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
 )
@@ -68,6 +70,49 @@ func TestMain(m *testing.M) {
 	wg.Add(1)
 	go func() {
 		for d := range eventOutCh {
+			if d.Type == channel.STATUS && d.StatusChan != nil {
+				clientID, _ := uuid.Parse("123e4567-e89b-12d3-a456-426614174001")
+				cneEvent := v1event.CloudNativeEvent()
+				cneEvent.SetID(ObjPub.ID)
+				cneEvent.Type = string(ptp.PtpStateChange)
+				cneEvent.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
+				cneEvent.SetDataContentType(event.ApplicationJSON)
+				data := event.Data{
+					Version: "event",
+					Values: []event.DataValue{{
+						Resource:  "test",
+						DataType:  event.NOTIFICATION,
+						ValueType: event.ENUMERATION,
+						Value:     ptp.ACQUIRING_SYNC,
+					},
+					},
+				}
+				data.SetVersion("v1") //nolint:errcheck
+				cneEvent.SetData(data)
+				e := cloudevents.Event{
+					Context: cloudevents.EventContextV1{
+						Type:       string(ptp.PtpStateChange),
+						Source:     cloudevents.URIRef{URL: url.URL{Scheme: "http", Host: "example.com", Path: "/source"}},
+						ID:         "status event",
+						Time:       &cloudevents.Timestamp{Time: time.Date(2020, 03, 21, 12, 34, 56, 780000000, time.UTC)},
+						DataSchema: &types2.URI{URL: url.URL{Scheme: "http", Host: "example.com", Path: "/schema"}},
+						Subject:    func(s string) *string { return &s }("topic"),
+					}.AsV1(),
+				}
+				_ = e.SetData(cloudevents.ApplicationJSON, cneEvent)
+				func() {
+					defer func() {
+						if err := recover(); err != nil {
+							log.Errorf("error on clsoe channel")
+						}
+					}()
+					d.StatusChan <- &channel.StatusChan{
+						ID:       "123",
+						ClientID: clientID,
+						Data:     &e,
+					}
+				}()
+			}
 			log.Infof("incoming data %#v", d)
 		}
 	}()
@@ -110,7 +155,7 @@ func TestServer_CreateSubscription(t *testing.T) {
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
 	defer resp.Body.Close()
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	bodyString := string(bodyBytes)
 	log.Print(bodyString)
@@ -133,7 +178,7 @@ func TestServer_GetSubscription(t *testing.T) {
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
 	defer resp.Body.Close()
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	rSub := api.New()
 	err = json.Unmarshal(bodyBytes, &rSub)
@@ -162,7 +207,7 @@ func TestServer_CreatePublisher(t *testing.T) {
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
 	defer resp.Body.Close()
-	pubBodyBytes, err := ioutil.ReadAll(resp.Body)
+	pubBodyBytes, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	err = json.Unmarshal(pubBodyBytes, &ObjPub)
 	assert.Nil(t, err)
@@ -183,7 +228,7 @@ func TestServer_GetPublisher(t *testing.T) {
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
 	defer resp.Body.Close()
-	pubBodyBytes, err := ioutil.ReadAll(resp.Body)
+	pubBodyBytes, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	var rPub pubsub.PubSub
 	log.Printf("the data %s", string(pubBodyBytes))
@@ -204,7 +249,7 @@ func TestServer_ListSubscriptions(t *testing.T) {
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
 	defer resp.Body.Close() // Close body only if response non-nil
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	var subList []pubsub.PubSub
 	log.Printf("TestServer_ListSubscriptions :%s\n", string(bodyBytes))
@@ -224,13 +269,29 @@ func TestServer_ListPublishers(t *testing.T) {
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
 	defer resp.Body.Close()
-	pubBodyBytes, err := ioutil.ReadAll(resp.Body)
+	pubBodyBytes, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	var pubList []pubsub.PubSub
 	err = json.Unmarshal(pubBodyBytes, &pubList)
 	assert.Nil(t, err)
 	defer resp.Body.Close()
 	assert.Greater(t, len(pubList), 0)
+}
+
+func TestServer_GetCurrentState(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	time.Sleep(2 * time.Second)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, resource, "CurrentState"), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	_, err = io.ReadAll(resp.Body)
+	assert.Nil(t, err)
 }
 
 func TestServer_TestPingStatusStatusCode(t *testing.T) {
@@ -322,7 +383,6 @@ func TestServer_KillAndRecover(t *testing.T) {
 	assert.Nil(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-
 }
 
 // New get new rest client
@@ -369,9 +429,8 @@ func Test_MultiplePost(t *testing.T) {
 		if resp != nil {
 			resp.Body.Close()
 		}
-
 	}()
-	pubBodyBytes, err := ioutil.ReadAll(resp.Body)
+	pubBodyBytes, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 	err = json.Unmarshal(pubBodyBytes, &ObjPub)
 	assert.Nil(t, err)
@@ -435,7 +494,7 @@ func (r *Rest) Post(url *types.URI, data []byte) int {
 	if response.Body != nil {
 		defer response.Body.Close()
 		// read any content and print
-		body, readErr := ioutil.ReadAll(response.Body)
+		body, readErr := io.ReadAll(response.Body)
 		if readErr == nil && len(body) > 0 {
 			log.Debugf("%s return response %s\n", url.String(), string(body))
 		}
