@@ -7,7 +7,7 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
 	github.com/prometheus/client_golang v1.11.0
-	github.com/redhat-cne/sdk-go v0.1.1-0.20230103161106-062a0d661405
+	github.com/redhat-cne/sdk-go v0.1.1-0.20230119124426-1ed827004687
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/net v0.0.0-20210614182718-04defd469f4e
