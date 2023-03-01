@@ -46,15 +46,16 @@ import (
 var (
 	server *restapi.Server
 
-	eventOutCh chan *channel.DataChan
-	closeCh    chan struct{}
-	wg         sync.WaitGroup
-	port       int    = 8989
-	apPath     string = "/routes/cne/v1/"
-	resource   string = "test/test"
-	storePath  string = "."
-	ObjSub     pubsub.PubSub
-	ObjPub     pubsub.PubSub
+	eventOutCh             chan *channel.DataChan
+	closeCh                chan struct{}
+	wg                     sync.WaitGroup
+	port                   int    = 8989
+	apPath                 string = "/routes/cne/v1/"
+	resource               string = "test/test"
+	resourceNoneSubscribed string = "test/nonesubscribed"
+	storePath              string = "."
+	ObjSub                 pubsub.PubSub
+	ObjPub                 pubsub.PubSub
 )
 
 func init() {
@@ -71,7 +72,6 @@ func TestMain(m *testing.M) {
 	go func() {
 		for d := range eventOutCh {
 			if d.Type == channel.STATUS && d.StatusChan != nil {
-				log.Info("WHY HERE")
 				clientID, _ := uuid.Parse("123e4567-e89b-12d3-a456-426614174001")
 				cneEvent := v1event.CloudNativeEvent()
 				cneEvent.SetID(ObjPub.ID)
@@ -104,13 +104,25 @@ func TestMain(m *testing.M) {
 				func() {
 					defer func() {
 						if err := recover(); err != nil {
-							log.Errorf("error on clsoe channel")
+							log.Errorf("error on close channel")
 						}
 					}()
-					d.StatusChan <- &channel.StatusChan{
-						ID:       "123",
-						ClientID: clientID,
-						Data:     &e,
+					if d.Address == resourceNoneSubscribed {
+						d.StatusChan <- &channel.StatusChan{
+							ID:         "123",
+							ClientID:   clientID,
+							Data:       &e,
+							StatusCode: http.StatusBadRequest,
+							Message:    []byte("Client not subscribed"),
+						}
+					} else {
+						d.StatusChan <- &channel.StatusChan{
+							ID:         "123",
+							ClientID:   clientID,
+							Data:       &e,
+							StatusCode: http.StatusOK,
+							Message:    []byte("ok"),
+						}
 					}
 				}()
 			}
@@ -279,20 +291,78 @@ func TestServer_ListPublishers(t *testing.T) {
 	assert.Greater(t, len(pubList), 0)
 }
 
-func TestServer_GetCurrentState(t *testing.T) {
+func TestServer_GetCurrentState_withSubscription(t *testing.T) {
+	// create subscription
+	sub := api.NewPubSub(
+		&types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", port), Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
+		resource)
+
+	data, err := json.Marshal(&sub)
+	assert.Nil(t, err)
+	assert.NotNil(t, data)
+	/// create new subscription
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	time.Sleep(2 * time.Second)
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, resource, "CurrentState"), nil)
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "subscriptions"), bytes.NewBuffer(data))
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
 	defer resp.Body.Close()
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	_, err = io.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
+	bodyString := string(bodyBytes)
+	log.Print(bodyString)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	err = json.Unmarshal(bodyBytes, &ObjSub)
+	assert.Nil(t, err)
+	assert.NotEmpty(t, ObjSub.ID)
+	assert.NotEmpty(t, ObjSub.URILocation)
+	assert.NotEmpty(t, ObjSub.EndPointURI)
+	assert.NotEmpty(t, ObjSub.Resource)
+	assert.Equal(t, sub.Resource, ObjSub.Resource)
+	log.Infof("Subscription:\n%s", ObjSub.String())
+
+	// try getting event
+	time.Sleep(2 * time.Second)
+	req, err = http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, ObjSub.Resource, "CurrentState"), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err = server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+	s, err2 := io.ReadAll(resp.Body)
+	assert.Nil(t, err2)
+	log.Infof("tedt %s ", string(s))
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Delete All Subscriptions
+	req, err = http.NewRequestWithContext(ctx, "DELETE", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "subscriptions"), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err = server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+}
+
+func TestServer_GetCurrentState_withoutSubscription(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// try getting event
+	time.Sleep(2 * time.Second)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, resourceNoneSubscribed, "CurrentState"), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+	s, err2 := io.ReadAll(resp.Body)
+	assert.Nil(t, err2)
+	log.Infof("tedt %s ", string(s))
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
 func TestServer_TestPingStatusStatusCode(t *testing.T) {
@@ -302,7 +372,7 @@ func TestServer_TestPingStatusStatusCode(t *testing.T) {
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
 	defer resp.Body.Close()
-	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
 func TestServer_DeleteSubscription(t *testing.T) {
@@ -354,7 +424,7 @@ func TestServer_GetNonExistingSubscription(t *testing.T) {
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
 	defer resp.Body.Close()
-	assert.Equal(t, resp.StatusCode, http.StatusBadRequest)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
 func TestServer_TestDummyStatusCode(t *testing.T) {
