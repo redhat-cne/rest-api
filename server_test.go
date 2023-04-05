@@ -49,11 +49,11 @@ var (
 	eventOutCh             chan *channel.DataChan
 	closeCh                chan struct{}
 	wg                     sync.WaitGroup
-	port                   int    = 8989
-	apPath                 string = "/routes/cne/v1/"
-	resource               string = "test/test"
-	resourceNoneSubscribed string = "test/nonesubscribed"
-	storePath              string = "."
+	port                   = 8989
+	apPath                 = "/routes/cne/v1/"
+	resource               = "test/test"
+	resourceNoneSubscribed = "test/nonesubscribed"
+	storePath              = "."
 	ObjSub                 pubsub.PubSub
 	ObjPub                 pubsub.PubSub
 )
