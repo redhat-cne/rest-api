@@ -536,7 +536,7 @@ func Test_MultiplePost(t *testing.T) {
 	time.Sleep(2 * time.Second)
 }
 
-func TestServer_End(t *testing.T) {
+func TestServer_End(*testing.T) {
 	close(eventOutCh)
 	close(closeCh)
 }
