@@ -1,13 +1,13 @@
 module github.com/redhat-cne/rest-api
 
-go 1.19
+go 1.21
 
 require (
-	github.com/cloudevents/sdk-go/v2 v2.13.0
-	github.com/google/uuid v1.3.0
+	github.com/cloudevents/sdk-go/v2 v2.15.2
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.0
 	github.com/prometheus/client_golang v1.14.0
-	github.com/redhat-cne/sdk-go v0.1.1-0.20230405191318-0f443c518882
+	github.com/redhat-cne/sdk-go v0.1.1-0.20240321130308-a635605654ab
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.8.0
 	golang.org/x/net v0.7.0
