@@ -30,7 +30,7 @@ import (
 	types2 "github.com/cloudevents/sdk-go/v2/types"
 	"github.com/google/uuid"
 
-	restapi "github.com/redhat-cne/rest-api"
+	restapi "github.com/redhat-cne/rest-api/v2"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	"github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
@@ -50,6 +50,7 @@ var (
 	closeCh                chan struct{}
 	wg                     sync.WaitGroup
 	port                   = 8989
+	apHost                 = "localhost"
 	apPath                 = "/routes/cne/v1/"
 	resource               = "test/test"
 	resourceNoneSubscribed = "test/nonesubscribed"
@@ -64,7 +65,7 @@ func init() {
 }
 
 func TestMain(m *testing.M) {
-	server = restapi.InitServer(port, apPath, storePath, eventOutCh, closeCh)
+	server = restapi.InitServer(port, apHost, apPath, storePath, eventOutCh, closeCh, nil)
 	//start http server
 	server.Start()
 
@@ -100,7 +101,7 @@ func TestMain(m *testing.M) {
 						Subject:    func(s string) *string { return &s }("topic"),
 					}.AsV1(),
 				}
-				_ = e.SetData(cloudevents.ApplicationJSON, cneEvent)
+				_ = e.SetData("", cneEvent)
 				func() {
 					defer func() {
 						if err := recover(); err != nil {
@@ -362,7 +363,7 @@ func TestServer_GetCurrentState_withoutSubscription(t *testing.T) {
 	s, err2 := io.ReadAll(resp.Body)
 	assert.Nil(t, err2)
 	log.Infof("tedt %s ", string(s))
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 
 func TestServer_TestPingStatusStatusCode(t *testing.T) {
@@ -424,7 +425,7 @@ func TestServer_GetNonExistingSubscription(t *testing.T) {
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
 	defer resp.Body.Close()
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 
 func TestServer_TestDummyStatusCode(t *testing.T) {
