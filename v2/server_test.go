@@ -49,9 +49,9 @@ var (
 	eventOutCh             chan *channel.DataChan
 	closeCh                chan struct{}
 	wg                     sync.WaitGroup
-	port                   = 8989
+	port                   = 8990
 	apHost                 = "localhost"
-	apPath                 = "/routes/cne/v1/"
+	apPath                 = "/api/ocloudNotifications/v2/"
 	resource               = "test/test"
 	resourceNoneSubscribed = "test/nonesubscribed"
 	storePath              = "."
@@ -59,13 +59,30 @@ var (
 	ObjPub                 pubsub.PubSub
 )
 
+func onReceiveOverrideFn(_ cloudevents.Event, d *channel.DataChan) error {
+	data := &event.Data{
+		Version: event.APISchemaVersion,
+		Values:  []event.DataValue{},
+	}
+	ce := cloudevents.NewEvent(cloudevents.VersionV1)
+	ce.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
+	ce.SetType("dummyType")
+	ce.SetSource("dummySource")
+	ce.SetSpecVersion(cloudevents.VersionV1)
+	ce.SetID(uuid.New().String())
+	ce.SetData("", *data) //nolint:errcheck
+	d.Data = &ce
+
+	return nil
+}
+
 func init() {
 	eventOutCh = make(chan *channel.DataChan, 10)
 	closeCh = make(chan struct{})
 }
 
 func TestMain(m *testing.M) {
-	server = restapi.InitServer(port, apHost, apPath, storePath, eventOutCh, closeCh, nil)
+	server = restapi.InitServer(port, apHost, apPath, storePath, eventOutCh, closeCh, onReceiveOverrideFn)
 	//start http server
 	server.Start()
 
@@ -89,7 +106,7 @@ func TestMain(m *testing.M) {
 					},
 					},
 				}
-				data.SetVersion("v1") //nolint:errcheck
+				data.SetVersion("1.0") //nolint:errcheck
 				cneEvent.SetData(data)
 				e := cloudevents.Event{
 					Context: cloudevents.EventContextV1{
@@ -154,8 +171,7 @@ func TestServer_CreateSubscription(t *testing.T) {
 	// create subscription
 	sub := api.NewPubSub(
 		&types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", port), Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
-		resource, "1.0")
-
+		resource, "2.0")
 	data, err := json.Marshal(&sub)
 	assert.Nil(t, err)
 	assert.NotNil(t, data)
@@ -182,6 +198,31 @@ func TestServer_CreateSubscription(t *testing.T) {
 	assert.NotEmpty(t, ObjSub.Resource)
 	assert.Equal(t, sub.Resource, ObjSub.Resource)
 	log.Infof("Subscription:\n%s", ObjSub.String())
+}
+
+func TestServer_CreateSubscriptionConflict(t *testing.T) {
+	// create subscription
+	sub := api.NewPubSub(
+		&types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", port), Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
+		resource, "2.0")
+	data, err := json.Marshal(&sub)
+	assert.Nil(t, err)
+	assert.NotNil(t, data)
+	/// create new subscription
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "subscriptions"), bytes.NewBuffer(data))
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+	bodyBytes, err := io.ReadAll(resp.Body)
+	assert.Nil(t, err)
+	bodyString := string(bodyBytes)
+	log.Print(bodyString)
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 }
 
 func TestServer_GetSubscription(t *testing.T) {
@@ -293,58 +334,17 @@ func TestServer_ListPublishers(t *testing.T) {
 }
 
 func TestServer_GetCurrentState_withSubscription(t *testing.T) {
-	// create subscription
-	sub := api.NewPubSub(
-		&types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", port), Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
-		resource, "1.0")
-
-	data, err := json.Marshal(&sub)
-	assert.Nil(t, err)
-	assert.NotNil(t, data)
-	/// create new subscription
 	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "subscriptions"), bytes.NewBuffer(data))
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, ObjSub.Resource, "CurrentState"), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
-	assert.Nil(t, err)
-	defer resp.Body.Close()
-	bodyBytes, err := io.ReadAll(resp.Body)
-	assert.Nil(t, err)
-	bodyString := string(bodyBytes)
-	log.Print(bodyString)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
-	err = json.Unmarshal(bodyBytes, &ObjSub)
-	assert.Nil(t, err)
-	assert.NotEmpty(t, ObjSub.ID)
-	assert.NotEmpty(t, ObjSub.URILocation)
-	assert.NotEmpty(t, ObjSub.EndPointURI)
-	assert.NotEmpty(t, ObjSub.Resource)
-	assert.Equal(t, sub.Resource, ObjSub.Resource)
-	log.Infof("Subscription:\n%s", ObjSub.String())
-
-	// try getting event
-	time.Sleep(2 * time.Second)
-	req, err = http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, ObjSub.Resource, "CurrentState"), nil)
-	assert.Nil(t, err)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err = server.HTTPClient.Do(req)
 	assert.Nil(t, err)
 	defer resp.Body.Close()
 	s, err2 := io.ReadAll(resp.Body)
 	assert.Nil(t, err2)
 	log.Infof("tedt %s ", string(s))
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-	// Delete All Subscriptions
-	req, err = http.NewRequestWithContext(ctx, "DELETE", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "subscriptions"), nil)
-	assert.Nil(t, err)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err = server.HTTPClient.Do(req)
-	assert.Nil(t, err)
-	defer resp.Body.Close()
 }
 
 func TestServer_GetCurrentState_withoutSubscription(t *testing.T) {
@@ -377,6 +377,37 @@ func TestServer_TestPingStatusStatusCode(t *testing.T) {
 }
 
 func TestServer_DeleteSubscription(t *testing.T) {
+	clientIDs := server.GetSubscriberAPI().GetClientIDByResource(ObjSub.Resource)
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "DELETE", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, "subscriptions", ObjSub.ID), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
+	defer resp.Body.Close()
+	// clean up files on disk
+	for _, clientID := range clientIDs {
+		os.Remove(fmt.Sprintf("%s.json", clientID))
+	}
+}
+
+func TestServer_DeleteSubscriptionNotFound(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "DELETE", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, "subscriptions", ObjSub.ID), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	defer resp.Body.Close()
+}
+
+func TestServer_DeleteAllSubscriptions(t *testing.T) {
 	// Delete All Subscriptions
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
@@ -410,7 +441,7 @@ func TestServer_GetNonExistingPublisher(t *testing.T) {
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
 	defer resp.Body.Close()
-	assert.Equal(t, resp.StatusCode, http.StatusBadRequest)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	assert.Nil(t, err)
 }
 
@@ -529,7 +560,7 @@ func Test_MultiplePost(t *testing.T) {
 		},
 		},
 	}
-	data.SetVersion("v1") //nolint:errcheck
+	data.SetVersion("1.0") //nolint:errcheck
 	cneEvent.SetData(data)
 	for i := 0; i < 5; i++ {
 		go publishEvent(cneEvent)
@@ -538,6 +569,11 @@ func Test_MultiplePost(t *testing.T) {
 }
 
 func TestServer_End(*testing.T) {
+	for _, clientID := range server.GetSubscriberAPI().GetClientIDByResource(ObjSub.Resource) {
+		os.Remove(fmt.Sprintf("%s.json", clientID))
+	}
+	os.Remove("pub.json")
+	os.Remove("sub.json")
 	close(eventOutCh)
 	close(closeCh)
 }
