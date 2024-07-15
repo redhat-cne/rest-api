@@ -100,7 +100,7 @@ func TestMain(m *testing.M) {
 						Subject:    func(s string) *string { return &s }("topic"),
 					}.AsV1(),
 				}
-				_ = e.SetData(cloudevents.ApplicationJSON, cneEvent)
+				_ = e.SetData("", cneEvent)
 				func() {
 					defer func() {
 						if err := recover(); err != nil {
