@@ -537,6 +537,8 @@ func Test_MultiplePost(t *testing.T) {
 }
 
 func TestServer_End(*testing.T) {
+	os.Remove("pub.json")
+	os.Remove("sub.json")
 	close(eventOutCh)
 	close(closeCh)
 }
