@@ -454,14 +454,14 @@ func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !strings.HasPrefix(resourceAddress, "/") {
+		resourceAddress = fmt.Sprintf("/%s", resourceAddress)
+	}
+
 	eventSubscribers := s.subscriberAPI.GetClientIDAddressByResource(resourceAddress)
 	if len(eventSubscribers) == 0 {
 		respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("subscription not found for %s", resourceAddress))
 		return
-	}
-
-	if !strings.HasPrefix(resourceAddress, "/") {
-		resourceAddress = fmt.Sprintf("/%s", resourceAddress)
 	}
 
 	// this is placeholder not sending back to report
