@@ -52,8 +52,8 @@ var (
 	port                   = 8990
 	apHost                 = "localhost"
 	apPath                 = "/api/ocloudNotifications/v2/"
-	resource               = "test/test"
-	resourceNoneSubscribed = "test/nonesubscribed"
+	resource               = "/test/test"
+	resourceNoneSubscribed = "/test/nonesubscribed"
 	storePath              = "."
 	ObjSub                 pubsub.PubSub
 	ObjPub                 pubsub.PubSub
