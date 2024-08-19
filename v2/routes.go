@@ -365,6 +365,11 @@ func (s *Server) deleteAllSubscriptions(w http.ResponseWriter, _ *http.Request) 
 		respondWithError(w, err.Error())
 		return
 	}
+	// empty the store in memory
+	if err = s.pubSubAPI.DeleteAllSubscriptions(); err != nil {
+		respondWithError(w, err.Error())
+		return
+	}
 
 	respondWithStatusCode(w, http.StatusNoContent, "")
 }
