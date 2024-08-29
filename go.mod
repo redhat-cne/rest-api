@@ -7,7 +7,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.0
 	github.com/prometheus/client_golang v1.14.0
-	github.com/redhat-cne/sdk-go v1.0.1-0.20240826142227-273e2055e3b6
+	github.com/redhat-cne/sdk-go v1.0.1-0.20240828211532-b538fe0c89be
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.8.0
 	golang.org/x/net v0.7.0
@@ -38,7 +38,7 @@ require (
 	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/tools v0.0.0-20200825202427-b303f430e36d // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
-	google.golang.org/protobuf v1.28.1 // indirect
+	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	honnef.co/go/tools v0.0.1-2020.1.4 // indirect
 )
