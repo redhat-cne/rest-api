@@ -46,28 +46,34 @@ import (
 var (
 	server *restapi.Server
 
-	eventOutCh             chan *channel.DataChan
-	closeCh                chan struct{}
-	wg                     sync.WaitGroup
-	port                   = 8990
-	apHost                 = "localhost"
-	apPath                 = "/api/ocloudNotifications/v2/"
-	resource               = "/test/test"
-	resourceNoneSubscribed = "/test/nonesubscribed"
-	storePath              = "."
-	ObjSub                 pubsub.PubSub
-	ObjPub                 pubsub.PubSub
+	eventOutCh      chan *channel.DataChan
+	closeCh         chan struct{}
+	wg              sync.WaitGroup
+	port            = 8990
+	apHost          = "localhost"
+	apPath          = "/api/ocloudNotifications/v2/"
+	resource        = "/east-edge-10/Node3/sync/sync-status/sync-state"
+	resourceInvalid = "/east-edge-10/Node3/invalid"
+	storePath       = "."
+	ObjSub          pubsub.PubSub
+	ObjPub          pubsub.PubSub
+	testSource      = "/sync/sync-status/sync-state"
+	testType        = "event.synchronization-state-change"
 )
 
-func onReceiveOverrideFn(_ cloudevents.Event, d *channel.DataChan) error {
+func onReceiveOverrideFn(e cloudevents.Event, d *channel.DataChan) error {
+	if e.Source() != resource {
+		return fmt.Errorf("could not find any events for requested resource type %s", e.Source())
+	}
+
 	data := &event.Data{
 		Version: event.APISchemaVersion,
 		Values:  []event.DataValue{},
 	}
 	ce := cloudevents.NewEvent(cloudevents.VersionV1)
 	ce.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
-	ce.SetType("dummyType")
-	ce.SetSource("dummySource")
+	ce.SetType(testType)
+	ce.SetSource(testSource)
 	ce.SetSpecVersion(cloudevents.VersionV1)
 	ce.SetID(uuid.New().String())
 	ce.SetData("", *data) //nolint:errcheck
@@ -97,9 +103,9 @@ func TestMain(m *testing.M) {
 				cneEvent.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
 				cneEvent.SetDataContentType(event.ApplicationJSON)
 				data := event.Data{
-					Version: "event",
+					Version: "v1.0",
 					Values: []event.DataValue{{
-						Resource:  "test",
+						Resource:  resource,
 						DataType:  event.NOTIFICATION,
 						ValueType: event.ENUMERATION,
 						Value:     ptp.ACQUIRING_SYNC,
@@ -125,7 +131,7 @@ func TestMain(m *testing.M) {
 							log.Errorf("error on close channel")
 						}
 					}()
-					if d.Address == resourceNoneSubscribed {
+					if d.Address == resourceInvalid {
 						d.StatusChan <- &channel.StatusChan{
 							ID:         "123",
 							ClientID:   clientID,
@@ -167,7 +173,62 @@ func TestServer_Health(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
-func TestServer_CreateSubscription(t *testing.T) {
+// O-RAN.WG6.O-CLOUD-CONF-Test-R003-v02.00
+// TC5.3.1 Create a subscription resource
+// 5.3.1.5 (2) Expected Results:
+// The return code is “400 Bad request”, without message body,
+// when the subscription request is not correct.
+func TestServer_CreateSubscription_KO_ReqWithoutMsgBody(t *testing.T) {
+	/// create new subscription without message body
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "subscriptions"), bytes.NewBuffer(nil))
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+	bodyBytes, err := io.ReadAll(resp.Body)
+	assert.Nil(t, err)
+	assert.Empty(t, bodyBytes)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+// O-RAN.WG6.O-CLOUD-CONF-Test-R003-v02.00
+// TC5.3.1 Create a subscription resource
+// 5.3.1.5 (3) Expected Results:
+// The return code is “404 Not found”, without message body, when the subscription resource is not available.
+func TestServer_CreateSubscription_KO_ResourceNotAvail(t *testing.T) {
+	// create subscription
+	sub := api.NewPubSub(
+		&types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", port), Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
+		"resourceNotExist", "2.0")
+	data, err := json.Marshal(&sub)
+	assert.Nil(t, err)
+	assert.NotNil(t, data)
+	/// create new subscription
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "subscriptions"), bytes.NewBuffer(data))
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+	bodyBytes, err := io.ReadAll(resp.Body)
+	assert.Nil(t, err)
+	assert.Empty(t, bodyBytes)
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+// O-RAN.WG6.O-CLOUD-CONF-Test-R003-v02.00
+// TC5.3.1 Create a subscription resource
+// 5.3.1.5 (1) Expected Results:
+// The return code is “201 OK”, with Response message body content that contains a Subscriptioninfo,
+// when the subscription request is correct and processed by the EP.
+func TestServer_CreateSubscription_OK(t *testing.T) {
 	// create subscription
 	sub := api.NewPubSub(
 		&types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", port), Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
@@ -200,7 +261,11 @@ func TestServer_CreateSubscription(t *testing.T) {
 	log.Infof("Subscription:\n%s", ObjSub.String())
 }
 
-func TestServer_CreateSubscriptionConflict(t *testing.T) {
+// O-RAN.WG6.O-CLOUD-CONF-Test-R003-v02.00
+// TC5.3.1 Create a subscription resource
+// 5.3.1.5 (4) Expected Results:
+// The return code is “409 Conflict”, without message body, when the subscription resource already exists.
+func TestServer_CreateSubscription_KO_SubAlreadyExist(t *testing.T) {
 	// create subscription
 	sub := api.NewPubSub(
 		&types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", port), Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
@@ -220,18 +285,47 @@ func TestServer_CreateSubscriptionConflict(t *testing.T) {
 	defer resp.Body.Close()
 	bodyBytes, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
-	bodyString := string(bodyBytes)
-	log.Print(bodyString)
+	assert.Empty(t, bodyBytes)
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 }
 
-func TestServer_GetSubscription(t *testing.T) {
+// O-RAN.WG6.O-CLOUD-CONF-Test-R003-v02.00
+// TC5.3.2 Get a list of subscription resources
+// 5.3.2.5 (1) Expected Results:
+// The return code is “200 OK”, with Response message body content containing an array of Subscriptioninfo.
+func TestServer_ListSubscriptions(t *testing.T) {
+	// Get All Subscriptions
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "subscriptions"), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close() // Close body only if response non-nil
+	bodyBytes, err := io.ReadAll(resp.Body)
+	assert.Nil(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	var subList []pubsub.PubSub
+	log.Printf("TestServer_ListSubscriptions :%s\n", string(bodyBytes))
+	err = json.Unmarshal(bodyBytes, &subList)
+	assert.Nil(t, err)
+	assert.Greater(t, len(subList), 0)
+}
+
+// O-RAN.WG6.O-CLOUD-CONF-Test-R003-v02.00
+// TC5.3.3 Get Detail of individual subscription resource
+// 5.3.3.5 (1) Expected Results:
+// The return code is “200 OK”, with Response message body content containing a Subscriptioninfo.
+func TestServer_GetSubscription_OK(t *testing.T) {
 	// Get Just Created Subscription
 	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, "subscriptions", ObjSub.ID), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
 	assert.Nil(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	defer resp.Body.Close()
 	bodyBytes, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
@@ -242,6 +336,24 @@ func TestServer_GetSubscription(t *testing.T) {
 	}
 	assert.Nil(t, err)
 	assert.Equal(t, rSub.ID, ObjSub.ID)
+}
+
+// O-RAN.WG6.O-CLOUD-CONF-Test-R003-v02.00
+// TC5.3.3 Get Detail of individual subscription resource
+// 5.3.3.5 (2) Expected Results:
+// The return code is “404 Not found”, without message body, when the subscription resource is not available (not created).
+func TestServer_GetSubscription_KO_SubNotAvail(t *testing.T) {
+	// Get Just Created Subscription
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, "subscriptions", "InvalidId"), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+	bodyBytes, err := io.ReadAll(resp.Body)
+	assert.Nil(t, err)
+	assert.Empty(t, bodyBytes)
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 
 func TestServer_CreatePublisher(t *testing.T) {
@@ -275,6 +387,51 @@ func TestServer_CreatePublisher(t *testing.T) {
 	log.Infof("publisher \n%s", ObjPub.String())
 }
 
+// O-RAN.WG6.O-CLOUD-CONF-Test-R003-v02.00
+// TC5.3.6 Event pull status notification
+// 5.3.6.5 (1) Expected results: The return code is “200 OK”.
+func TestServer_GetCurrentState_OK(t *testing.T) {
+	ctx := context.Background()
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, ObjSub.Resource, "CurrentState"), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+	s, err2 := io.ReadAll(resp.Body)
+	assert.Nil(t, err2)
+	log.Infof("tedt %s ", string(s))
+	var e cloudevents.Event
+	err = json.Unmarshal(s, &e)
+	assert.Nil(t, err)
+	assert.Equal(t, testSource, e.Context.GetSource())
+	assert.Equal(t, testType, e.Context.GetType())
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// O-RAN.WG6.O-CLOUD-CONF-Test-R003-v02.00
+// TC5.3.6 Event pull status notification
+// 5.3.6.5 (2) Expected results:
+// The return code is “404 Not Found”, when event notification resource is not available on this node.
+func TestServer_GetCurrentState_KO_ResourceInvalid(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// try getting event
+	time.Sleep(2 * time.Second)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, resourceInvalid, "CurrentState"), nil)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+	s, err2 := io.ReadAll(resp.Body)
+	assert.Nil(t, err2)
+	log.Infof("tedt %s ", string(s))
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
 func TestServer_GetPublisher(t *testing.T) {
 	// Get Just created Publisher
 	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, "publishers", ObjPub.ID), nil)
@@ -291,26 +448,6 @@ func TestServer_GetPublisher(t *testing.T) {
 	assert.Equal(t, resp.StatusCode, http.StatusOK)
 	assert.Nil(t, err)
 	assert.Equal(t, ObjPub.ID, rPub.ID)
-}
-
-func TestServer_ListSubscriptions(t *testing.T) {
-	// Get All Subscriptions
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "subscriptions"), nil)
-	assert.Nil(t, err)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := server.HTTPClient.Do(req)
-	assert.Nil(t, err)
-	defer resp.Body.Close() // Close body only if response non-nil
-	bodyBytes, err := io.ReadAll(resp.Body)
-	assert.Nil(t, err)
-	var subList []pubsub.PubSub
-	log.Printf("TestServer_ListSubscriptions :%s\n", string(bodyBytes))
-	err = json.Unmarshal(bodyBytes, &subList)
-	assert.Nil(t, err)
-	assert.Greater(t, len(subList), 0)
 }
 
 func TestServer_ListPublishers(t *testing.T) {
@@ -333,39 +470,6 @@ func TestServer_ListPublishers(t *testing.T) {
 	assert.Greater(t, len(pubList), 0)
 }
 
-func TestServer_GetCurrentState_withSubscription(t *testing.T) {
-	ctx := context.Background()
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, ObjSub.Resource, "CurrentState"), nil)
-	assert.Nil(t, err)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := server.HTTPClient.Do(req)
-	assert.Nil(t, err)
-	defer resp.Body.Close()
-	s, err2 := io.ReadAll(resp.Body)
-	assert.Nil(t, err2)
-	log.Infof("tedt %s ", string(s))
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-}
-
-func TestServer_GetCurrentState_withoutSubscription(t *testing.T) {
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	// try getting event
-	time.Sleep(2 * time.Second)
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, resourceNoneSubscribed, "CurrentState"), nil)
-	assert.Nil(t, err)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := server.HTTPClient.Do(req)
-	assert.Nil(t, err)
-	defer resp.Body.Close()
-	s, err2 := io.ReadAll(resp.Body)
-	assert.Nil(t, err2)
-	log.Infof("tedt %s ", string(s))
-	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
-}
-
 func TestServer_TestPingStatusStatusCode(t *testing.T) {
 	req, err := http.NewRequest("PUT", fmt.Sprintf("http://localhost:%d%s%s%s", port, apPath, "subscriptions/status/", ObjSub.ID), nil)
 	assert.Nil(t, err)
@@ -376,7 +480,10 @@ func TestServer_TestPingStatusStatusCode(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
-func TestServer_DeleteSubscription(t *testing.T) {
+// O-RAN.WG6.O-CLOUD-CONF-Test-R003-v02.00
+// TC5.3.4 Delete individual subscription resources
+// 5.3.4.5 (1) Expected Results: The return code is “204 DELETE”.
+func TestServer_DeleteSubscription_OK(t *testing.T) {
 	clientIDs := server.GetSubscriberAPI().GetClientIDByResource(ObjSub.Resource)
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
@@ -394,7 +501,9 @@ func TestServer_DeleteSubscription(t *testing.T) {
 	}
 }
 
-func TestServer_DeleteSubscriptionNotFound(t *testing.T) {
+// O-RAN.WG6.O-CLOUD-CONF-Test-R003-v02.00
+// TC5.3.4 Delete individual subscription resources
+func TestServer_DeleteSubscription_KO_SubNotFound(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
