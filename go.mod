@@ -7,11 +7,13 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.0
 	github.com/prometheus/client_golang v1.14.0
-	github.com/redhat-cne/sdk-go v1.22.0
+	github.com/redhat-cne/sdk-go v1.22.0-new
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.8.0
 	golang.org/x/net v0.23.0
 )
+
+replace github.com/redhat-cne/sdk-go v1.22.0-new => ../sdk-go/
 
 require (
 	github.com/BurntSushi/toml v0.3.1 // indirect
