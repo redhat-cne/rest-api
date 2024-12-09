@@ -19,9 +19,9 @@
 // Terms Of Service:
 //
 //	Schemes: http, https
-//	Host: localhost:8089
-//	basePath: /api/ocloudNotifications/v1
-//	Version: 1.0.0
+//	Host: localhost:9043
+//	BasePath: /api/ocloudNotifications/v2
+//	Version: 2.0.0
 //	Contact: Aneesh Puttur<aputtur@redhat.com>
 //
 //	Consumes:
@@ -44,7 +44,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	"github.com/redhat-cne/sdk-go/pkg/event"
-	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	pubsubv1 "github.com/redhat-cne/sdk-go/v1/pubsub"
 	subscriberApi "github.com/redhat-cne/sdk-go/v1/subscriber"
@@ -94,11 +93,40 @@ type Server struct {
 	statusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error
 }
 
-// publisher/subscription data model
+// SubscriptionInfo defines data types used for subscription.
+type SubscriptionInfo struct { //nolint:deadcode,unused
+	// Identifier for the created subscription resource.
+	// in:body
+	// example: d1dd1770-e718-401e-ba32-cef05a286164
+	ID string `json:"SubscriptionId" omit:"empty"`
+	// Endpoint URI (a.k.a callback URI), e.g. http://localhost:8080/resourcestatus/ptp
+	// in: query
+	// example: http://localhost:8080/resourcestatus/ptp
+	// +required
+	EndPointURI string `json:"EndpointUri" example:"http://localhost:8080/resourcestatus/ptp" omit:"empty"`
+	// The URI location for querying the subscription created.
+	// in:body
+	// example: http://localhost:9043/api/ocloudNotifications/v2/publishers/d1dd1770-e718-401e-ba32-cef05a286164
+	URILocation string `json:"UriLocation" omit:"empty"`
+	// The resource address specifies the Event Producer with a hierarchical path.
+	// Format /{clusterName}/{siteName}(/optional/hierarchy/..)/{nodeName}/{(/optional/hierarchy)/resource}
+	// in: query
+	// example: /east-edge-10/vdu3/o-ran-sync/sync-group/sync-status/sync-state
+	// +required
+	Resource string `json:"ResourceAddress" example:"/east-edge-10/vdu3/o-ran-sync/sync-group/sync-status/sync-state"`
+}
+
 // swagger:response pubSubResp
+// Shall be returned when the subscription resource is created successfully.
 type swaggPubSubRes struct { //nolint:deadcode,unused
 	// in:body
-	Body pubsub.PubSub
+	Body SubscriptionInfo
+}
+
+// swagger:response publishers
+type swaggPubSubResList struct { //nolint:deadcode,unused
+	// in:body
+	Body []SubscriptionInfo
 }
 
 // PubSub request model
@@ -125,6 +153,16 @@ type swaggReqNotFound struct { //nolint:deadcode,unused
 	Body struct {
 		// HTTP status code 404 -  Not Found
 		Code int `json:"code" example:"404"`
+	}
+}
+
+// Error Conflict
+// swagger:response conflict
+type swaggReqConflict struct { //nolint:deadcode,unused
+	// in:body
+	Body struct {
+		// HTTP status code 409 -  Conflict
+		Code int `json:"code" example:"409"`
 	}
 }
 
@@ -227,57 +265,59 @@ func (s *Server) Start() {
 	// createSubscription create subscription and send it to a channel that is shared by middleware to process
 	// swagger:operation POST /subscriptions subscription createSubscription
 	// ---
-	// summary: Creates a new subscription.
-	// description: If subscription creation is success(or if already exists), subscription will be returned with Created (201).
+	// summary: Creates a subscription resource for the Event Consumer.
+	// description: Creates a new subscription for the required event by passing the appropriate payload.
+	// You can subscribe to the following PTP events:
+	// - /sync/sync-status/sync-state
+	// - /sync/ptp-status/lock-state
+	// - /sync/gnss-status/gnss-sync-status
+	// - /sync/sync-status/os-clock-sync-state
+	// - /sync/ptp-status/clock-class
 	// parameters:
-	// - name: subscription
-	//   description: subscription to add to the list of subscriptions
+	// - name: SubscriptionInfo
+	//   description: The payload will include an event notification request, endpointUri and ResourceAddress.
 	//   in: body
 	//   schema:
-	//      "$ref": "#/definitions/PubSub"
+	//      "$ref": "#/definitions/SubscriptionInfo"
 	// responses:
 	//   "201":
 	//     "$ref": "#/responses/pubSubResp"
 	//   "400":
 	//     "$ref": "#/responses/badReq"
+	//   "404":
+	//     "$ref": "#/responses/notFoundReq"
+	//   "409":
+	//     "$ref": "#/responses/conflict"
 	api.HandleFunc("/subscriptions", s.createSubscription).Methods(http.MethodPost)
 
-	//createPublisher create publisher and send it to a channel that is shared by middleware to process
-	// swagger:operation POST /publishers/ publishers createPublisher
-	// ---
-	// summary: Creates a new publisher.
-	// description: If publisher creation is success(or if already exists), publisher will be returned with Created (201).
-	// parameters:
-	// - name: publisher
-	//   description: publisher to add to the list of publishers
-	//   in: body
-	//   schema:
-	//      "$ref": "#/definitions/PubSub"
-	// responses:
-	//   "201":
-	//     "$ref": "#/responses/pubSubResp"
-	//   "400":
-	//     "$ref": "#/responses/badReq"
 	api.HandleFunc("/publishers", s.createPublisher).Methods(http.MethodPost)
+
 	/*
 		 this method a list of subscription object(s) and their associated properties
 		200  Returns the subscription resources and their associated properties that already exist.
 			See note below.
 		404 Subscription resources are not available (not created).
 	*/
+	// swagger:route GET /subscriptions
+	// Get a list of subscription object(s) and their associated properties.
+	// responses:
+	//   200: Returns the subscription resources and their associated properties that already exist.
+	//   400: Bad request by the client.
 	api.HandleFunc("/subscriptions", s.getSubscriptions).Methods(http.MethodGet)
+
 	//publishers create publisher and send it to a channel that is shared by middleware to process
-	// swagger:operation GET /publishers/ publishers getPublishers
+	// swagger:operation GET /publishers publishers getPublishers
 	// ---
 	// summary: Get publishers.
-	// description: If publisher creation is success(or if already exists), publisher will be returned with Created (201).
+	// description: Returns a list of publisher details for the cluster node.
 	// parameters:
 	// responses:
 	//   "200":
 	//     "$ref": "#/responses/publishers"
 	//   "404":
-	//     "$ref": "#/responses/notFound"
+	//	   description: Publishers not found
 	api.HandleFunc("/publishers", s.getPublishers).Methods(http.MethodGet)
+
 	// 200 and 404
 	api.HandleFunc("/subscriptions/{subscriptionid}", s.getSubscriptionByID).Methods(http.MethodGet)
 	api.HandleFunc("/publishers/{publisherid}", s.getPublisherByID).Methods(http.MethodGet)
@@ -289,7 +329,8 @@ func (s *Server) Start() {
 	api.HandleFunc("/publishers", s.deleteAllPublishers).Methods(http.MethodDelete)
 
 	//pingForSubscribedEventStatus pings for event status  if the publisher  has capability to push event on demand
-	// swagger:operation POST /subscriptions/status subscriptions pingForSubscribedEventStatus
+	// this API is internal
+	// operation POST /subscriptions/status subscriptions pingForSubscribedEventStatus
 	// ---
 	// summary: Get status of publishing events.
 	// description: If publisher status ping is success, call  will be returned with status accepted.
@@ -313,7 +354,7 @@ func (s *Server) Start() {
 	api.HandleFunc("/log", s.logEvent).Methods(http.MethodPost)
 
 	//publishEvent create event and send it to a channel that is shared by middleware to process
-	// swagger:operation POST /create/event/ event publishEvent
+	// this API is internal
 	// ---
 	// summary: Creates a new event.
 	// description: If publisher is present for the event, then event creation is success and be returned with Accepted (202).

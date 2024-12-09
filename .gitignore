@@ -18,3 +18,4 @@ pub.json
 sub.json
 
 .idea
+.cache
