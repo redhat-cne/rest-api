@@ -289,6 +289,42 @@ func TestServer_CreateSubscription_KO_SubAlreadyExist(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 }
 
+// multiple clients should be able to create subscriptions with
+// the same resource but different endpointURI
+func TestServer_CreateSubscription_MultiClients(t *testing.T) {
+	// create subscription
+	sub := api.NewPubSub(
+		&types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", port), Path: fmt.Sprintf("%s%s", apPath, "dummy2")}},
+		resource, "2.0")
+	data, err := json.Marshal(&sub)
+	assert.Nil(t, err)
+	assert.NotNil(t, data)
+	/// create new subscription
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "subscriptions"), bytes.NewBuffer(data))
+	assert.Nil(t, err)
+
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+	bodyBytes, err := io.ReadAll(resp.Body)
+	assert.Nil(t, err)
+	bodyString := string(bodyBytes)
+	log.Print(bodyString)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	err = json.Unmarshal(bodyBytes, &ObjSub)
+	assert.Nil(t, err)
+	assert.NotEmpty(t, ObjSub.ID)
+	assert.NotEmpty(t, ObjSub.URILocation)
+	assert.NotEmpty(t, ObjSub.EndPointURI)
+	assert.NotEmpty(t, ObjSub.Resource)
+	assert.Equal(t, sub.Resource, ObjSub.Resource)
+	log.Infof("Subscription:\n%s", ObjSub.String())
+}
+
 // O-RAN.WG6.O-CLOUD-CONF-Test-R003-v02.00
 // TC5.3.2 Get a list of subscription resources
 // 5.3.2.5 (1) Expected Results:
@@ -484,7 +520,7 @@ func TestServer_TestPingStatusStatusCode(t *testing.T) {
 // TC5.3.4 Delete individual subscription resources
 // 5.3.4.5 (1) Expected Results: The return code is “204 DELETE”.
 func TestServer_DeleteSubscription_OK(t *testing.T) {
-	clientIDs := server.GetSubscriberAPI().GetClientIDByResource(ObjSub.Resource)
+	clients := server.GetSubscriberAPI().GetClientIDAddressByResource(ObjSub.Resource)
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -496,7 +532,7 @@ func TestServer_DeleteSubscription_OK(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
 	defer resp.Body.Close()
 	// clean up files on disk
-	for _, clientID := range clientIDs {
+	for clientID := range clients {
 		os.Remove(fmt.Sprintf("%s.json", clientID))
 	}
 }
@@ -678,7 +714,7 @@ func Test_MultiplePost(t *testing.T) {
 }
 
 func TestServer_End(*testing.T) {
-	for _, clientID := range server.GetSubscriberAPI().GetClientIDByResource(ObjSub.Resource) {
+	for clientID := range server.GetSubscriberAPI().GetClientIDAddressByResource(ObjSub.Resource) {
 		os.Remove(fmt.Sprintf("%s.json", clientID))
 	}
 	os.Remove("pub.json")
