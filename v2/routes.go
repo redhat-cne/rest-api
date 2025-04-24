@@ -424,7 +424,7 @@ func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// getCurrentState get current status of the  events that are subscribed to
+// getCurrentState get current status of the events that are subscribed to
 func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
 	queries := mux.Vars(r)
 	resourceAddress, ok := queries["resourceAddress"]
@@ -472,6 +472,12 @@ func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
 		respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("subscription not found for %s", resourceAddress))
 		return
 	}
+	var endPointURI *types.URI
+	// assuming one subscriber for now
+	for _, address := range eventSubscribers {
+		endPointURI = address
+		break
+	}
 
 	// this is placeholder not sending back to report
 	out := channel.DataChan{
@@ -488,6 +494,7 @@ func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
 		if statusErr := s.statusReceiveOverrideFn(*e, &out); statusErr != nil {
 			respondWithStatusCode(w, http.StatusNotFound, statusErr.Error())
 		} else if out.Data != nil {
+			log.Infof("sending Get CurrentState event %s to subscriber %s", e.Source(), endPointURI.String())
 			respondWithJSON(w, http.StatusOK, *out.Data)
 		} else {
 			respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("event not found for %s", resourceAddress))
