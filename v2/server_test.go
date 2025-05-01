@@ -46,19 +46,22 @@ import (
 var (
 	server *restapi.Server
 
-	eventOutCh      chan *channel.DataChan
-	closeCh         chan struct{}
-	wg              sync.WaitGroup
-	port            = 8990
-	apHost          = "localhost"
-	apPath          = "/api/ocloudNotifications/v2/"
-	resource        = "/east-edge-10/Node3/sync/sync-status/sync-state"
-	resourceInvalid = "/east-edge-10/Node3/invalid"
-	storePath       = "."
-	ObjSub          pubsub.PubSub
-	ObjPub          pubsub.PubSub
-	testSource      = "/sync/sync-status/sync-state"
-	testType        = "event.synchronization-state-change"
+	eventOutCh       chan *channel.DataChan
+	closeCh          chan struct{}
+	wg               sync.WaitGroup
+	port             = 8990
+	apHost           = "localhost"
+	apPath           = "/api/ocloudNotifications/v2/"
+	resource         = "/east-edge-10/Node3/sync/sync-status/sync-state"
+	resourceInvalid  = "/east-edge-10/Node3/invalid"
+	storePath        = "."
+	ObjSub           pubsub.PubSub
+	ObjPub           pubsub.PubSub
+	testSource       = "/sync/sync-status/sync-state"
+	testType         = "event.synchronization-state-change"
+	endpoint         = "http://localhost:8990//api/ocloudNotifications/v2/dummy"
+	onceCloseEvent   sync.Once
+	onceCloseCloseCh sync.Once
 )
 
 func onReceiveOverrideFn(e cloudevents.Event, d *channel.DataChan) error {
@@ -184,6 +187,58 @@ func TestServer_CreateSubscription_KO_ReqWithoutMsgBody(t *testing.T) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "subscriptions"), bytes.NewBuffer(nil))
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+	bodyBytes, err := io.ReadAll(resp.Body)
+	assert.Nil(t, err)
+	assert.Empty(t, bodyBytes)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+func TestServer_CreateSubscription_KO_invalidEndpoint(t *testing.T) {
+	// create subscription
+	subBadData := map[string]interface{}{
+		"boo":             endpoint,
+		"ResourceAddress": resource,
+	}
+
+	data, err := json.Marshal(&subBadData)
+	assert.Nil(t, err)
+	assert.NotNil(t, data)
+	/// create new subscription
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "subscriptions"), bytes.NewBuffer(data))
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.HTTPClient.Do(req)
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+	bodyBytes, err := io.ReadAll(resp.Body)
+	assert.Nil(t, err)
+	assert.Empty(t, bodyBytes)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+func TestServer_CreateSubscription_KO_invalidResource(t *testing.T) {
+	// create subscription
+	subBadData := map[string]interface{}{
+		"EndpointUri": endpoint,
+		"boo":         resource,
+	}
+
+	data, err := json.Marshal(&subBadData)
+	assert.Nil(t, err)
+	assert.NotNil(t, data)
+	/// create new subscription
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://localhost:%d%s%s", port, apPath, "subscriptions"), bytes.NewBuffer(data))
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -719,8 +774,15 @@ func TestServer_End(*testing.T) {
 	}
 	os.Remove("pub.json")
 	os.Remove("sub.json")
-	close(eventOutCh)
-	close(closeCh)
+	// hanlding go test -race ./...
+	// by closing channel only once
+	onceCloseEvent.Do(func() {
+		close(eventOutCh)
+	})
+
+	onceCloseCloseCh.Do(func() {
+		close(closeCh)
+	})
 }
 
 // Rest client to make http request
@@ -775,4 +837,36 @@ func (r *Rest) PostEvent(url *types.URI, e event.Event) error {
 		return fmt.Errorf("post returned status %d", status)
 	}
 	return nil
+}
+
+func TestServerStatusConcurrency(*testing.T) {
+	s := &restapi.Server{} // Adjust import as needed if your package name differs
+	statuses := []restapi.ServerStatus{
+		0,
+		1,
+		2,
+		3,
+	}
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Writer goroutine: updates status multiple times
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			s.SetStatus(statuses[i%len(statuses)])
+			time.Sleep(1 * time.Millisecond)
+		}
+	}()
+
+	// Reader goroutine: reads Ready() status
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			_ = s.Ready()
+			time.Sleep(1 * time.Millisecond)
+		}
+	}()
+
+	wg.Wait()
 }
