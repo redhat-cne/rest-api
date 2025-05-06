@@ -53,8 +53,8 @@ github.com/prometheus/common v0.42.0 h1:EKsfXEYo4JpWMHH5cg+KOUWeuJSov1Id8zGR8eeI
 github.com/prometheus/common v0.42.0/go.mod h1:xBwqVerjNdUDjgODMpudtOMwlOwf2SaTr1yjz4b7Zbc=
 github.com/prometheus/procfs v0.8.0 h1:ODq8ZFEaYeCaZOJlZZdJA2AbQR98dSHSM1KW/You5mo=
 github.com/prometheus/procfs v0.8.0/go.mod h1:z7EfXMXOkbkqb9IINtpCn86r/to3BnA0uaxHdg830/4=
-github.com/redhat-cne/sdk-go v1.23.0 h1:HxJqhqlTZJ91C5FHHb0S4ERQsVDOC6kx6n8cAKRH0Ao=
-github.com/redhat-cne/sdk-go v1.23.0/go.mod h1:+edGV2lN9v2+mXgfOC3jNH8WX5r07r+HngoK6nAnuVk=
+github.com/redhat-cne/sdk-go v1.23.2 h1:RHzYF7g5Anq2wa6wyId5iwGOufsjvdvsa3EcP+4fg38=
+github.com/redhat-cne/sdk-go v1.23.2/go.mod h1:+edGV2lN9v2+mXgfOC3jNH8WX5r07r+HngoK6nAnuVk=
 github.com/rogpeppe/go-internal v1.3.0/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFRclV5y23lUDJ4=
 github.com/rogpeppe/go-internal v1.10.0 h1:TMyTOH3F/DB16zRVcYyreMH6GnZZrwQVAoYjRBZyWFQ=
 github.com/rogpeppe/go-internal v1.10.0/go.mod h1:UQnix2H7Ngw/k4C5ijL5+65zddjncjaFoBhdsK/akog=
