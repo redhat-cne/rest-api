@@ -258,7 +258,7 @@ func TestServer_CreateSubscription_KO_ResourceNotAvail(t *testing.T) {
 	// create subscription
 	sub := api.NewPubSub(
 		&types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", port), Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
-		"resourceNotExist", "2.0")
+		"resourceNotExist")
 	data, err := json.Marshal(&sub)
 	assert.Nil(t, err)
 	assert.NotNil(t, data)
@@ -287,7 +287,7 @@ func TestServer_CreateSubscription_OK(t *testing.T) {
 	// create subscription
 	sub := api.NewPubSub(
 		&types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", port), Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
-		resource, "2.0")
+		resource)
 	data, err := json.Marshal(&sub)
 	assert.Nil(t, err)
 	assert.NotNil(t, data)
@@ -324,7 +324,7 @@ func TestServer_CreateSubscription_KO_SubAlreadyExist(t *testing.T) {
 	// create subscription
 	sub := api.NewPubSub(
 		&types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", port), Path: fmt.Sprintf("%s%s", apPath, "dummy")}},
-		resource, "2.0")
+		resource)
 	data, err := json.Marshal(&sub)
 	assert.Nil(t, err)
 	assert.NotNil(t, data)
@@ -350,7 +350,7 @@ func TestServer_CreateSubscription_MultiClients(t *testing.T) {
 	// create subscription
 	sub := api.NewPubSub(
 		&types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%d", port), Path: fmt.Sprintf("%s%s", apPath, "dummy2")}},
-		resource, "2.0")
+		resource)
 	data, err := json.Marshal(&sub)
 	assert.Nil(t, err)
 	assert.NotNil(t, data)
