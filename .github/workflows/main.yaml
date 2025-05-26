@@ -4,12 +4,12 @@ on: [push, pull_request]
 jobs:
   golangci:
     name: Linting
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v2
         with:
-          go-version: '1.21'
+          go-version: '1.20'
       - name: tidy
         run: go mod tidy
       - name: golangci-lint
@@ -19,17 +19,17 @@ jobs:
           skip-pkg-cache: true
           skip-build-cache: true
           # Required: the version of golangci-lint is required and must be specified without patch version: we always use the latest patch version.
-          version: v1.54
+          version: v1.59
           args: --timeout 3m0s
   unit-tests:
     name: Unit Tests
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
       - uses: actions/setup-go@v2
         with:
-          go-version: '1.21'
+          go-version: '1.20'
       - name: tidy
         run: go mod tidy
       - name: Run Test Scripts
