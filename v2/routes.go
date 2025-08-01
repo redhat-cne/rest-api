@@ -41,10 +41,14 @@ import (
 )
 
 const (
-	// EVENT_NOT_FOUND is a special resource address set when event data is not found.
-	// It is used in POST /subscriptions to test EndpointURI in order to successfully
+	// the following special resource addresses are used in POST /subscriptions to
+	// send initial notification to test EndpointURI in order to successfully
 	// create a subscription when event data is not available.
-	EVENT_NOT_FOUND = "event-not-found"
+
+	// EventNotFound is a special resource address set when event data is not found.
+	EventNotFound = "event-not-found"
+	// PTPNotSet is a special resource address set when PTP stats is not yet populated.
+	PTPNotSet = "ptp-not-set"
 )
 
 // createSubscription create subscription and send it to a channel that is shared by middleware to process
@@ -503,8 +507,8 @@ func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
 				respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("failed to unmarshal event data for %s: %v", resourceAddress, err))
 			} else if len(eventData.Values) == 0 || eventData.Values[0].Resource == "" {
 				respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("event data invalid for %s", resourceAddress))
-			} else if eventData.Values[0].Resource == EVENT_NOT_FOUND {
-				respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("event resource not found for %s", resourceAddress))
+			} else if strings.HasSuffix(eventData.Values[0].Resource, EventNotFound) || strings.HasSuffix(eventData.Values[0].Resource, PTPNotSet) {
+				respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("event data not found for %s", resourceAddress))
 			} else {
 				respondWithJSON(w, http.StatusOK, *out.Data)
 			}
