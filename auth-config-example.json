@@ -1,0 +1,12 @@
+{
+  "enableMTLS": true,
+  "caCertPath": "/etc/certs/ca.crt",
+  "serverCertPath": "/etc/certs/server.crt",
+  "serverKeyPath": "/etc/certs/server.key",
+
+  "enableOAuth": true,
+  "oauthIssuer": "https://your-oauth-provider.com",
+  "oauthJWKSURL": "https://your-oauth-provider.com/.well-known/jwks.json",
+  "requiredScopes": ["subscription:create", "events:read"],
+  "requiredAudience": "rest-api-service"
+}
