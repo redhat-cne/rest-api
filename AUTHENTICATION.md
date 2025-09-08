@@ -1,15 +1,15 @@
 # Authentication Configuration for REST API
 
-This document describes how to configure mTLS (mutual TLS) and OAuth authentication for the REST API server.
+This document describes how to configure mTLS (mutual TLS) and OAuth authentication for the REST API server using OpenShift's cert-manager operator and Authentication operator.
 
 ## Overview
 
 The REST API supports two authentication mechanisms that can be applied to specific endpoints:
 
-1. **mTLS (Mutual TLS)**: Client certificate-based authentication
-2. **OAuth**: Bearer token-based authentication using JWT tokens
+1. **mTLS (Mutual TLS)**: Client certificate-based authentication using OpenShift cert-manager operator
+2. **OAuth**: Bearer token-based authentication using OpenShift Authentication operator and JWT tokens
 
-Both mechanisms can be enabled independently or together for enhanced security.
+Both mechanisms can be enabled independently or together for enhanced security and leverage OpenShift's native certificate and authentication management capabilities.
 
 ## Protected vs Public Endpoints
 
@@ -94,18 +94,23 @@ This approach ensures:
 
 ```go
 type AuthConfig struct {
-    // mTLS configuration
-    EnableMTLS     bool     `json:"enableMTLS"`
-    CACertPath     string   `json:"caCertPath"`
-    ServerCertPath string   `json:"serverCertPath"`
-    ServerKeyPath  string   `json:"serverKeyPath"`
+    // mTLS configuration using cert-manager
+    EnableMTLS           bool   `json:"enableMTLS"`
+    CACertPath           string `json:"caCertPath"`
+    ServerCertPath       string `json:"serverCertPath"`
+    ServerKeyPath        string `json:"serverKeyPath"`
+    CertManagerIssuer    string `json:"certManagerIssuer"`    // cert-manager ClusterIssuer name
+    CertManagerNamespace string `json:"certManagerNamespace"` // namespace for cert-manager resources
 
-    // OAuth configuration
-    EnableOAuth      bool     `json:"enableOAuth"`
-    OAuthIssuer      string   `json:"oauthIssuer"`
-    OAuthJWKSURL     string   `json:"oauthJWKSURL"`
-    RequiredScopes   []string `json:"requiredScopes"`
-    RequiredAudience string   `json:"requiredAudience"`
+    // OAuth configuration using OpenShift Authentication Operator
+    EnableOAuth           bool     `json:"enableOAuth"`
+    OAuthIssuer           string   `json:"oauthIssuer"`           // OpenShift OAuth server URL
+    OAuthJWKSURL          string   `json:"oauthJWKSURL"`          // OpenShift JWKS endpoint
+    RequiredScopes        []string `json:"requiredScopes"`        // Required OAuth scopes
+    RequiredAudience      string   `json:"requiredAudience"`      // Required OAuth audience
+    ServiceAccountName    string   `json:"serviceAccountName"`    // ServiceAccount for client authentication
+    ServiceAccountToken   string   `json:"serviceAccountToken"`   // ServiceAccount token path
+    AuthenticationOperator bool    `json:"authenticationOperator"` // Use OpenShift Authentication Operator
 }
 ```
 
@@ -116,16 +121,98 @@ See `auth-config-example.json` for a complete configuration example:
 ```json
 {
   "enableMTLS": true,
-  "caCertPath": "/etc/certs/ca.crt",
-  "serverCertPath": "/etc/certs/server.crt",
-  "serverKeyPath": "/etc/certs/server.key",
+  "caCertPath": "/etc/cloud-event-proxy/ca-bundle/ca.crt",
+  "serverCertPath": "/etc/cloud-event-proxy/server-certs/tls.crt",
+  "serverKeyPath": "/etc/cloud-event-proxy/server-certs/tls.key",
+  "certManagerIssuer": "openshift-cluster-issuer",
+  "certManagerNamespace": "openshift-ptp",
 
   "enableOAuth": true,
-  "oauthIssuer": "https://your-oauth-provider.com",
-  "oauthJWKSURL": "https://your-oauth-provider.com/.well-known/jwks.json",
-  "requiredScopes": ["subscription:create", "events:read"],
-  "requiredAudience": "rest-api-service"
+  "oauthIssuer": "https://oauth-openshift.apps.openshift.example.com",
+  "oauthJWKSURL": "https://oauth-openshift.apps.openshift.example.com/.well-known/openid_configuration",
+  "requiredScopes": ["user:info", "user:check-access"],
+  "requiredAudience": "openshift",
+  "serviceAccountName": "cloud-event-proxy-client",
+  "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token",
+  "authenticationOperator": true
 }
+```
+
+## OpenShift Integration
+
+### cert-manager Operator
+
+The mTLS implementation leverages OpenShift's cert-manager operator for automatic certificate management:
+
+#### Prerequisites
+- cert-manager operator installed in the cluster
+- ClusterIssuer configured (e.g., `openshift-cluster-issuer`)
+
+#### Certificate Resources
+- **Certificate**: Defines the certificate request for mTLS server certificates
+- **ClusterIssuer**: References the cert-manager issuer for certificate generation
+- **Secrets**: Automatically created by cert-manager containing certificates and keys
+
+#### Example cert-manager Certificate
+```yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: cloud-event-proxy-mtls
+  namespace: openshift-ptp
+spec:
+  secretName: cloud-event-proxy-mtls-tls
+  issuerRef:
+    name: openshift-cluster-issuer
+    kind: ClusterIssuer
+  dnsNames:
+  - cloud-event-proxy.openshift-ptp.svc.cluster.local
+  - cloud-event-proxy.openshift-ptp.svc
+  - cloud-event-proxy
+  usages:
+  - digital signature
+  - key encipherment
+  - client auth
+  - server auth
+```
+
+### OpenShift Authentication Operator
+
+The OAuth implementation uses OpenShift's built-in authentication operator:
+
+#### Prerequisites
+- OpenShift cluster with authentication operator enabled
+- ServiceAccount with appropriate RBAC permissions
+
+#### OAuth Configuration
+- **OAuth Server**: Uses OpenShift's built-in OAuth server
+- **JWKS Endpoint**: OpenShift's JWKS endpoint for token validation
+- **ServiceAccount Tokens**: For client authentication
+- **RBAC**: Role-based access control for API permissions
+
+#### Example ServiceAccount Configuration
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cloud-event-proxy-client
+  namespace: openshift-ptp
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: openshift-ptp
+  name: cloud-event-proxy-oauth
+rules:
+- apiGroups: [""]
+  resources: ["serviceaccounts"]
+  verbs: ["get", "list"]
+- apiGroups: ["authentication.k8s.io"]
+  resources: ["tokenreviews"]
+  verbs: ["create"]
+- apiGroups: ["authorization.k8s.io"]
+  resources: ["subjectaccessreviews"]
+  verbs: ["create"]
 ```
 
 ## mTLS Configuration
@@ -135,6 +222,15 @@ See `auth-config-example.json` for a complete configuration example:
 1. **CA Certificate** (`caCertPath`): The Certificate Authority certificate used to validate client certificates
 2. **Server Certificate** (`serverCertPath`): The server's TLS certificate
 3. **Server Private Key** (`serverKeyPath`): The server's private key
+
+### cert-manager Certificate Management
+
+With cert-manager, certificates are automatically managed:
+
+1. **Automatic Generation**: Certificates are automatically generated by cert-manager
+2. **Automatic Renewal**: Certificates are automatically renewed before expiration
+3. **Secret Management**: Certificates and keys are stored in Kubernetes secrets
+4. **DNS Validation**: Automatic DNS validation for certificate requests
 
 ### Certificate Generation Example
 

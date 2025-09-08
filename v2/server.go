@@ -79,18 +79,23 @@ const (
 
 // AuthConfig contains authentication configuration
 type AuthConfig struct {
-	// mTLS configuration
-	EnableMTLS     bool   `json:"enableMTLS"`
-	CACertPath     string `json:"caCertPath"`
-	ServerCertPath string `json:"serverCertPath"`
-	ServerKeyPath  string `json:"serverKeyPath"`
+	// mTLS configuration using cert-manager
+	EnableMTLS           bool   `json:"enableMTLS"`
+	CACertPath           string `json:"caCertPath"`
+	ServerCertPath       string `json:"serverCertPath"`
+	ServerKeyPath        string `json:"serverKeyPath"`
+	CertManagerIssuer    string `json:"certManagerIssuer"`    // cert-manager ClusterIssuer name
+	CertManagerNamespace string `json:"certManagerNamespace"` // namespace for cert-manager resources
 
-	// OAuth configuration
-	EnableOAuth      bool     `json:"enableOAuth"`
-	OAuthIssuer      string   `json:"oauthIssuer"`
-	OAuthJWKSURL     string   `json:"oauthJWKSURL"`
-	RequiredScopes   []string `json:"requiredScopes"`
-	RequiredAudience string   `json:"requiredAudience"`
+	// OAuth configuration using OpenShift Authentication Operator
+	EnableOAuth            bool     `json:"enableOAuth"`
+	OAuthIssuer            string   `json:"oauthIssuer"`            // OpenShift OAuth server URL
+	OAuthJWKSURL           string   `json:"oauthJWKSURL"`           // OpenShift JWKS endpoint
+	RequiredScopes         []string `json:"requiredScopes"`         // Required OAuth scopes
+	RequiredAudience       string   `json:"requiredAudience"`       // Required OAuth audience
+	ServiceAccountName     string   `json:"serviceAccountName"`     // ServiceAccount for client authentication
+	ServiceAccountToken    string   `json:"serviceAccountToken"`    // ServiceAccount token path
+	AuthenticationOperator bool     `json:"authenticationOperator"` // Use OpenShift Authentication Operator
 }
 
 // Server defines rest routes server object
