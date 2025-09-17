@@ -1,0 +1,159 @@
+# Unified OpenShift Authentication Configuration
+# Works for both single node and multi-node OpenShift clusters
+# Uses OpenShift's built-in Service CA and OAuth server
+
+---
+# Service with Service CA annotation for automatic certificate generation
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/scrape: "false"
+    service.beta.openshift.io/serving-cert-secret-name: cloud-event-proxy-tls
+  labels:
+    app: linuxptp-daemon
+  name: ptp-event-publisher-service-{{.NodeName}}
+  namespace: openshift-ptp
+spec:
+  clusterIP: None
+  selector:
+    app: linuxptp-daemon
+    nodeName: {{.NodeName}}
+  ports:
+    - name: publisher-port
+      port: 9043
+  sessionAffinity: None
+  type: ClusterIP
+
+---
+# ConfigMap for cluster information
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-info
+  namespace: openshift-ptp
+data:
+  cluster-name: "{{.ClusterName}}"
+
+---
+# ConfigMap for authentication configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloud-event-proxy-auth-config
+  namespace: openshift-ptp
+data:
+  auth-config.json: |
+    {
+      "enableMTLS": true,
+      "useServiceCA": true,
+      "caCertPath": "/etc/cloud-event-proxy/ca-bundle/service-ca.crt",
+      "serverCertPath": "/etc/cloud-event-proxy/server-certs/tls.crt",
+      "serverKeyPath": "/etc/cloud-event-proxy/server-certs/tls.key",
+      "enableOAuth": true,
+      "useOpenShiftOAuth": true,
+      "oauthIssuer": "https://oauth-openshift.apps.{{.ClusterName}}",
+      "oauthJWKSURL": "https://oauth-openshift.apps.{{.ClusterName}}/oauth/jwks",
+      "requiredScopes": ["user:info"],
+      "requiredAudience": "openshift",
+      "serviceAccountName": "cloud-event-proxy-sa",
+      "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    }
+
+---
+# ServiceAccount for the cloud-event-proxy
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cloud-event-proxy-sa
+  namespace: openshift-ptp
+
+---
+# Role for cloud-event-proxy permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cloud-event-proxy-role
+  namespace: openshift-ptp
+rules:
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "update", "patch"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch"]
+
+---
+# RoleBinding to bind ServiceAccount to Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cloud-event-proxy-binding
+  namespace: openshift-ptp
+subjects:
+- kind: ServiceAccount
+  name: cloud-event-proxy-sa
+  namespace: openshift-ptp
+roleRef:
+  kind: Role
+  name: cloud-event-proxy-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# DaemonSet configuration for cloud-event-proxy
+# Works on both single node and multi-node clusters
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: linuxptp-daemon
+  namespace: openshift-ptp
+spec:
+  selector:
+    matchLabels:
+      app: linuxptp-daemon
+      nodeName: {{.NodeName}}
+  template:
+    metadata:
+      labels:
+        app: linuxptp-daemon
+        nodeName: {{.NodeName}}
+    spec:
+      serviceAccountName: cloud-event-proxy-sa
+      containers:
+      - name: cloud-event-proxy
+        image: quay.io/redhat-cne/cloud-event-proxy:latest
+        args:
+          - "--auth-config=/etc/cloud-event-proxy/auth/auth-config.json"
+        env:
+        - name: CLUSTER_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: cluster-info
+              key: cluster-name
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        - name: server-certs
+          mountPath: /etc/cloud-event-proxy/server-certs
+          readOnly: true
+        - name: ca-bundle
+          mountPath: /etc/cloud-event-proxy/ca-bundle
+          readOnly: true
+        - name: auth-config
+          mountPath: /etc/cloud-event-proxy/auth
+          readOnly: true
+      volumes:
+      - name: server-certs
+        secret:
+          secretName: cloud-event-proxy-tls
+      - name: ca-bundle
+        secret:
+          secretName: cloud-event-proxy-tls
+      - name: auth-config
+        configMap:
+          name: cloud-event-proxy-auth-config

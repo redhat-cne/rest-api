@@ -1,15 +1,15 @@
 # Authentication Configuration for REST API
 
-This document describes how to configure mTLS (mutual TLS) and OAuth authentication for the REST API server using OpenShift's cert-manager operator and Authentication operator.
+This document describes how to configure mTLS (mutual TLS) and OAuth authentication for the REST API server using OpenShift's built-in Service CA and OAuth server.
 
 ## Overview
 
 The REST API supports two authentication mechanisms that can be applied to specific endpoints:
 
-1. **mTLS (Mutual TLS)**: Client certificate-based authentication using OpenShift cert-manager operator
-2. **OAuth**: Bearer token-based authentication using OpenShift Authentication operator and JWT tokens
+1. **mTLS (Mutual TLS)**: Client certificate-based authentication using OpenShift Service CA
+2. **OAuth**: Bearer token-based authentication using OpenShift's built-in OAuth server and JWT tokens
 
-Both mechanisms can be enabled independently or together for enhanced security and leverage OpenShift's native certificate and authentication management capabilities.
+Both mechanisms can be enabled independently or together for enhanced security. This unified approach works seamlessly for both single node and multi-node OpenShift clusters, providing enterprise-grade security with minimal complexity.
 
 ## Protected vs Public Endpoints
 
@@ -94,15 +94,16 @@ This approach ensures:
 
 ```go
 type AuthConfig struct {
-    // mTLS configuration using cert-manager
+    // mTLS configuration - works for both single and multi-node clusters
     EnableMTLS           bool   `json:"enableMTLS"`
     CACertPath           string `json:"caCertPath"`
     ServerCertPath       string `json:"serverCertPath"`
     ServerKeyPath        string `json:"serverKeyPath"`
-    CertManagerIssuer    string `json:"certManagerIssuer"`    // cert-manager ClusterIssuer name
-    CertManagerNamespace string `json:"certManagerNamespace"` // namespace for cert-manager resources
+    UseServiceCA         bool   `json:"useServiceCA"`         // Use OpenShift Service CA (recommended for all cluster sizes)
+    CertManagerIssuer    string `json:"certManagerIssuer"`    // cert-manager ClusterIssuer name (optional alternative)
+    CertManagerNamespace string `json:"certManagerNamespace"` // namespace for cert-manager resources (optional alternative)
 
-    // OAuth configuration using OpenShift Authentication Operator
+    // OAuth configuration using OpenShift OAuth Server - works for both single and multi-node clusters
     EnableOAuth           bool     `json:"enableOAuth"`
     OAuthIssuer           string   `json:"oauthIssuer"`           // OpenShift OAuth server URL
     OAuthJWKSURL          string   `json:"oauthJWKSURL"`          // OpenShift JWKS endpoint
@@ -110,79 +111,73 @@ type AuthConfig struct {
     RequiredAudience      string   `json:"requiredAudience"`      // Required OAuth audience
     ServiceAccountName    string   `json:"serviceAccountName"`    // ServiceAccount for client authentication
     ServiceAccountToken   string   `json:"serviceAccountToken"`   // ServiceAccount token path
-    AuthenticationOperator bool    `json:"authenticationOperator"` // Use OpenShift Authentication Operator
+    UseOpenShiftOAuth     bool     `json:"useOpenShiftOAuth"`     // Use OpenShift's built-in OAuth server (recommended for all cluster sizes)
+    AuthenticationOperator bool    `json:"authenticationOperator"` // Use OpenShift Authentication Operator (optional alternative)
 }
 ```
 
 ### Example Configuration
 
-See `auth-config-example.json` for a complete configuration example:
+See `openshift-auth-config.json` for a complete configuration example that works for both single node and multi-node clusters:
 
 ```json
 {
   "enableMTLS": true,
-  "caCertPath": "/etc/cloud-event-proxy/ca-bundle/ca.crt",
+  "useServiceCA": true,
+  "caCertPath": "/etc/cloud-event-proxy/ca-bundle/service-ca.crt",
   "serverCertPath": "/etc/cloud-event-proxy/server-certs/tls.crt",
   "serverKeyPath": "/etc/cloud-event-proxy/server-certs/tls.key",
-  "certManagerIssuer": "openshift-cluster-issuer",
-  "certManagerNamespace": "openshift-ptp",
-
   "enableOAuth": true,
-  "oauthIssuer": "https://oauth-openshift.apps.openshift.example.com",
-  "oauthJWKSURL": "https://oauth-openshift.apps.openshift.example.com/.well-known/openid_configuration",
-  "requiredScopes": ["user:info", "user:check-access"],
+  "useOpenShiftOAuth": true,
+  "oauthIssuer": "https://oauth-openshift.apps.your-cluster.com",
+  "oauthJWKSURL": "https://oauth-openshift.apps.your-cluster.com/.well-known/jwks.json",
+  "requiredScopes": ["user:info"],
   "requiredAudience": "openshift",
-  "serviceAccountName": "cloud-event-proxy-client",
-  "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token",
-  "authenticationOperator": true
+  "serviceAccountName": "cloud-event-proxy-sa",
+  "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
 }
 ```
 
 ## OpenShift Integration
 
-### cert-manager Operator
+### Service CA (Recommended)
 
-The mTLS implementation leverages OpenShift's cert-manager operator for automatic certificate management:
+OpenShift's Service CA provides automatic certificate management for both single node and multi-node clusters:
 
 #### Prerequisites
-- cert-manager operator installed in the cluster
-- ClusterIssuer configured (e.g., `openshift-cluster-issuer`)
+- OpenShift cluster (single node or multi-node)
+- No additional operators required
 
 #### Certificate Resources
-- **Certificate**: Defines the certificate request for mTLS server certificates
-- **ClusterIssuer**: References the cert-manager issuer for certificate generation
-- **Secrets**: Automatically created by cert-manager containing certificates and keys
+- **Service**: Annotated with `service.beta.openshift.io/serving-cert-secret-name` for automatic certificate generation
+- **Secret**: Automatically created by Service CA with server certificates
 
-#### Example cert-manager Certificate
+#### Example Service CA Configuration
 ```yaml
-apiVersion: cert-manager.io/v1
-kind: Certificate
+apiVersion: v1
+kind: Service
 metadata:
-  name: cloud-event-proxy-mtls
+  name: ptp-event-publisher-service
   namespace: openshift-ptp
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: cloud-event-proxy-tls
 spec:
-  secretName: cloud-event-proxy-mtls-tls
-  issuerRef:
-    name: openshift-cluster-issuer
-    kind: ClusterIssuer
-  dnsNames:
-  - cloud-event-proxy.openshift-ptp.svc.cluster.local
-  - cloud-event-proxy.openshift-ptp.svc
-  - cloud-event-proxy
-  usages:
-  - digital signature
-  - key encipherment
-  - client auth
-  - server auth
+  selector:
+    app: linuxptp-daemon
+  ports:
+  - port: 9043
+    targetPort: 9043
+  type: ClusterIP
 ```
 
-### OpenShift Authentication Operator
+### OpenShift OAuth Server
 
-The OAuth implementation uses OpenShift's built-in authentication operator:
+The OAuth implementation uses OpenShift's built-in OAuth server:
 
 #### Prerequisites
-- OpenShift cluster with authentication operator enabled
+- OpenShift cluster (single node or multi-node)
 - ServiceAccount with appropriate RBAC permissions
+- No additional operators required
 
 #### OAuth Configuration
 - **OAuth Server**: Uses OpenShift's built-in OAuth server

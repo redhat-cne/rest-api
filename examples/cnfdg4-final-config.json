@@ -1,0 +1,16 @@
+{
+  "enableMTLS": true,
+  "useServiceCA": true,
+  "caCertPath": "/etc/cloud-event-proxy/ca-bundle/service-ca.crt",
+  "serverCertPath": "/etc/cloud-event-proxy/server-certs/tls.crt",
+  "serverKeyPath": "/etc/cloud-event-proxy/server-certs/tls.key",
+  "enableOAuth": true,
+  "useOpenShiftOAuth": true,
+  "oauthIssuer": "https://oauth-openshift.apps.cnfdg4.sno.ptp.eng.rdu2.dc.redhat.com",
+  "oauthJWKSURL": "https://oauth-openshift.apps.cnfdg4.sno.ptp.eng.rdu2.dc.redhat.com/oauth/jwks",
+  "requiredScopes": ["user:info"],
+  "requiredAudience": "openshift",
+  "serviceAccountName": "cloud-event-proxy-sa",
+  "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
+}
+
