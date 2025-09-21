@@ -310,12 +310,12 @@ func InitServer(port int, apiHost, apiPath, storePath string,
 
 		// Initialize mTLS CA certificate pool if mTLS is enabled
 		if authConfig != nil && authConfig.EnableMTLS && authConfig.CACertPath != "" {
-			log.Infof("InitServer: Setting authConfig with EnableMTLS=%t", authConfig.EnableMTLS)
+			fmt.Printf("InitServer: Setting authConfig with EnableMTLS=%t\n", authConfig.EnableMTLS)
 			if err := ServerInstance.initMTLSCACertPool(); err != nil {
 				log.Errorf("failed to initialize mTLS CA certificate pool: %v", err)
 			}
 		} else {
-			log.Infof("InitServer: authConfig is nil or EnableMTLS is false (authConfig=%v, EnableMTLS=%t)", authConfig != nil, authConfig != nil && authConfig.EnableMTLS)
+			fmt.Printf("InitServer: authConfig is nil or EnableMTLS is false (authConfig=%v, EnableMTLS=%t)\n", authConfig != nil, authConfig != nil && authConfig.EnableMTLS)
 		}
 	})
 	// singleton
@@ -402,12 +402,12 @@ func (s *Server) GetHostPath() *types.URI {
 	protocol := "http"
 	if s.authConfig != nil && s.authConfig.EnableMTLS {
 		protocol = "https"
-		log.Infof("GetHostPath: Using HTTPS protocol (authConfig.EnableMTLS=%t)", s.authConfig.EnableMTLS)
+		fmt.Printf("GetHostPath: Using HTTPS protocol (authConfig.EnableMTLS=%t)\n", s.authConfig.EnableMTLS)
 	} else {
-		log.Infof("GetHostPath: Using HTTP protocol (authConfig=%v, EnableMTLS=%t)", s.authConfig != nil, s.authConfig != nil && s.authConfig.EnableMTLS)
+		fmt.Printf("GetHostPath: Using HTTP protocol (authConfig=%v, EnableMTLS=%t)\n", s.authConfig != nil, s.authConfig != nil && s.authConfig.EnableMTLS)
 	}
 	uri := types.ParseURI(fmt.Sprintf("%s://localhost:%d%s", protocol, s.port, s.apiPath))
-	log.Infof("GetHostPath: Returning URI=%s", uri.String())
+	fmt.Printf("GetHostPath: Returning URI=%s\n", uri.String())
 	return uri
 }
 
