@@ -349,9 +349,9 @@ oc top pods -n openshift-ptp
 
 ### From Other Approaches:
 
-#### From cert-manager:
+#### From Manual Certificates:
 1. Set `useServiceCA: true`
-2. Remove cert-manager Certificate resources
+2. Remove manual certificate generation scripts
 3. Update certificate paths to use Service CA secrets
 
 #### From Service Mesh:
