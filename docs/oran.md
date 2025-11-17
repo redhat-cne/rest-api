@@ -64,8 +64,34 @@ headers
 [3.1.4 Resource addressing
 [8](#resource-addressing)](#resource-addressing)
 
-[Chapter 4 Subscription API Definition
-[10](#subscription-api-definition)](#subscription-api-definition)
+[Chapter 4 Authentication and Security
+[9](#authentication-and-security)](#authentication-and-security)
+
+[4.1 Overview [9](#overview-1)](#overview-1)
+
+[4.2 Authentication Mechanisms
+[9](#authentication-mechanisms)](#authentication-mechanisms)
+
+[4.2.1 mTLS (Mutual TLS) Authentication
+[9](#mtls-mutual-tls-authentication)](#mtls-mutual-tls-authentication)
+
+[4.2.2 OAuth 2.0 Authentication
+[9](#oauth-20-authentication)](#oauth-20-authentication)
+
+[4.2.3 Dual Authentication
+[10](#dual-authentication)](#dual-authentication)
+
+[4.3 Authentication Requirements by Endpoint
+[10](#authentication-requirements-by-endpoint)](#authentication-requirements-by-endpoint)
+
+[4.4 Security Considerations
+[10](#security-considerations)](#security-considerations)
+
+[4.5 Configuration Examples
+[11](#configuration-examples)](#configuration-examples)
+
+[Chapter 5 Subscription API Definition
+[12](#subscription-api-definition)](#subscription-api-definition)
 
 [4.1 Resource Structure [10](#resource-structure)](#resource-structure)
 
@@ -221,7 +247,7 @@ EP Event Producer
 
 REST Representational State Transfer
 
-# Introduction 
+# Introduction
 
 This document describes a REST API that allows Event Consumers (EC) such
 as a vO-DU or CNF to subscribe to events/status from the O-Cloud. The
@@ -305,9 +331,9 @@ Subscription/Publication use case:
   Consumer (vO-DU, vO-CU etc) will be able to make a decision if to
   proceed with its operation
 
-# Usage of HTTP 
+# Usage of HTTP
 
-## General 
+## General
 
 HTTP/2, IETF RFC 7540, shall be used.
 
@@ -345,11 +371,20 @@ request messages in the O-Cloud APIs.
 |                  |                      | body.                                   |
 +------------------+----------------------+-----------------------------------------+
 | Authorization    | IETF RFC 7235 \[13\] | The authorization token for the request |
-|                  |                      | and is optional. In a local scenario    |
-|                  |                      | (i.e. within the POD/VM) this is not    |
-|                  |                      | mandated. If the consumer is external   |
-|                  |                      | to the POD/VM then Authorization is     |
-|                  |                      | mandated.                               |
+|                  |                      | using Bearer scheme (OAuth 2.0). This   |
+|                  |                      | field is optional for local scenarios   |
+|                  |                      | (i.e. within the POD/VM). If the        |
+|                  |                      | consumer is external to the POD/VM or   |
+|                  |                      | when authentication is required, this   |
+|                  |                      | header shall contain a valid OAuth 2.0  |
+|                  |                      | Bearer token or ServiceAccount token.   |
+|                  |                      |                                         |
+|                  |                      | Format: "Bearer <token>"                |
+|                  |                      |                                         |
+|                  |                      | Note: When mTLS is enabled, client      |
+|                  |                      | certificate authentication is performed |
+|                  |                      | at the TLS layer in addition to token   |
+|                  |                      | validation.                             |
 +------------------+----------------------+-----------------------------------------+
 | Accept-Encoding  | IETF RFC 7231 \[10\] | This field may be used to indicate what |
 |                  |                      | response content-encodings (e.g gzip)   |
@@ -545,9 +580,196 @@ Field definitions are shown in [[Table 2]{.underline}](#table2).
 |                                   | specified level.     |                                                       |
 +-----------------------------------+----------------------+-------------------------------------------------------+
 
-# Subscription API Definition 
+# Authentication and Security
 
-## Resource Structure 
+## Overview
+
+The O-Cloud Notification API supports two complementary authentication mechanisms to ensure secure communication between Event Consumers and Event Producers:
+
+1. **Mutual TLS (mTLS)**: Certificate-based authentication at the transport layer
+2. **OAuth 2.0**: Token-based authentication at the application layer
+
+These authentication mechanisms can be used independently or in combination (dual authentication) depending on the deployment security requirements.
+
+## Authentication Mechanisms
+
+### mTLS (Mutual TLS) Authentication
+
+mTLS provides transport layer security by requiring both the client and server to authenticate using X.509 certificates.
+
+**Key Features:**
+- Certificate-based client authentication
+- Encrypted communication channel
+- Certificate verification against trusted Certificate Authority (CA)
+- Support for OpenShift Service CA for automatic certificate management
+
+**Implementation Requirements:**
+- Client must present valid X.509 certificate signed by trusted CA
+- Server verifies client certificate during TLS handshake
+- Certificate Subject Name and validity period are validated
+- Certificate revocation checking may be implemented
+
+**Error Responses:**
+- **401 Unauthorized**: Client certificate not provided or invalid
+- **403 Forbidden**: Valid certificate but insufficient permissions
+
+### OAuth 2.0 Authentication
+
+OAuth 2.0 provides application layer authentication using Bearer tokens (JWT - JSON Web Tokens).
+
+**Supported Token Types:**
+1. **OpenShift OAuth Tokens**: Issued by OpenShift OAuth server
+2. **Kubernetes ServiceAccount Tokens**: Native Kubernetes authentication tokens
+
+**Token Validation:**
+- **Issuer Verification**: Token must be issued by trusted OAuth server
+- **Audience Validation**: Token audience must match the API service
+- **Signature Verification**: Token signature verified using JWKS (JSON Web Key Set)
+- **Expiration Check**: Token must not be expired
+- **Scope Validation**: Token must contain required scopes (if configured)
+
+**Implementation Requirements:**
+- Client includes Bearer token in Authorization header: `Authorization: Bearer <token>`
+- Server validates token against OpenShift OAuth server or Kubernetes API
+- Token introspection performed on each API request
+- Failed validation results in 401 Unauthorized response
+
+**Error Responses:**
+- **401 Unauthorized**: Token missing, invalid, expired, or failed validation
+- **403 Forbidden**: Valid token but insufficient permissions
+
+### Dual Authentication
+
+When both mTLS and OAuth are enabled, clients must satisfy both authentication mechanisms:
+
+1. **TLS Layer**: Client certificate verified during TLS handshake
+2. **Application Layer**: Bearer token validated in Authorization header
+
+**Benefits of Dual Authentication:**
+- Defense-in-depth security model
+- Compliance with security standards requiring multiple authentication factors
+- Protection against compromised credentials (either certificate or token)
+
+## Authentication Requirements by Endpoint
+
+The following table describes authentication requirements for each API endpoint:
+
+**Table: Authentication Requirements by HTTP Method**
+
++---------------------------+---------------+------------------+-------------------------+
+| **Endpoint**              | **Method**    | **Auth Required**| **Description**         |
++:==========================+:==============+:=================+:========================+
+| /subscriptions            | POST          | Yes              | Create subscription     |
+|                           |               |                  | (mTLS and/or OAuth)     |
++---------------------------+---------------+------------------+-------------------------+
+| /subscriptions            | GET           | No               | List subscriptions      |
+|                           |               |                  | (public endpoint)       |
++---------------------------+---------------+------------------+-------------------------+
+| /subscriptions            | DELETE        | Yes              | Delete all              |
+|                           |               |                  | subscriptions           |
+|                           |               |                  | (mTLS and/or OAuth)     |
++---------------------------+---------------+------------------+-------------------------+
+| /subscriptions/           | GET           | No               | Get specific            |
+| {subscriptionId}          |               |                  | subscription            |
+|                           |               |                  | (public endpoint)       |
++---------------------------+---------------+------------------+-------------------------+
+| /subscriptions/           | DELETE        | Yes              | Delete specific         |
+| {subscriptionId}          |               |                  | subscription            |
+|                           |               |                  | (mTLS and/or OAuth)     |
++---------------------------+---------------+------------------+-------------------------+
+| /{ResourceAddress}/       | GET           | No               | Pull current state      |
+| CurrentState              |               |                  | (public endpoint)       |
++---------------------------+---------------+------------------+-------------------------+
+| /publishers               | GET           | No               | List publishers         |
+|                           |               |                  | (public endpoint)       |
++---------------------------+---------------+------------------+-------------------------+
+| /health                   | GET           | No               | Health check            |
+|                           |               |                  | (always public)         |
++---------------------------+---------------+------------------+-------------------------+
+
+**Note**: Localhost connections (within the same POD/VM) may bypass authentication requirements depending on deployment configuration.
+
+## Security Considerations
+
+### Certificate Management
+
+**For mTLS Authentication:**
+- Certificates should be rotated regularly (recommended: 90 days or less)
+- Use strong key sizes (minimum RSA 2048-bit or ECDSA P-256)
+- Implement certificate revocation checking (CRL or OCSP)
+- Store private keys securely (encrypted, restricted access)
+
+**OpenShift Service CA Integration:**
+- Automatic certificate issuance and rotation
+- Certificates mounted as Kubernetes Secrets
+- Trust bundle distributed via ConfigMaps
+
+### Token Management
+
+**For OAuth 2.0 Authentication:**
+- Tokens should have limited lifetime (recommended: 1 hour or less)
+- Use refresh tokens for long-running clients
+- Implement token revocation support
+- Protect tokens in transit (HTTPS only)
+- Validate all token claims (issuer, audience, expiration)
+
+### Localhost Exception
+
+Connections originating from localhost (127.0.0.1 or ::1) may bypass authentication:
+- **Rationale**: Helper/Sidecar containers in same POD/VM are trusted
+- **Risk**: Compromise of any container in POD grants API access
+- **Mitigation**: Use RBAC and Pod Security Policies to limit container capabilities
+
+### RBAC Integration
+
+When using Kubernetes ServiceAccount tokens:
+- Token subject mapped to Kubernetes ServiceAccount
+- RBAC policies control access to API operations
+- Principle of least privilege: Grant minimal required permissions
+- Use separate ServiceAccounts for different workload types
+
+## Configuration Examples
+
+### mTLS Configuration
+
+**Client Certificate Request:**
+```bash
+curl -X POST https://api-server:9043/api/ocloudNotifications/v2/subscriptions \
+  --cert /etc/certs/client.crt \
+  --key /etc/certs/client.key \
+  --cacert /etc/certs/ca.crt \
+  -H "Content-Type: application/json" \
+  -d '{"ResourceAddress": "/sync/sync-status/sync-state", "EndpointUri": "http://localhost:8080/callback"}'
+```
+
+### OAuth 2.0 Configuration
+
+**Bearer Token Request:**
+```bash
+TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+curl -X POST https://api-server:9043/api/ocloudNotifications/v2/subscriptions \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ResourceAddress": "/sync/sync-status/sync-state", "EndpointUri": "http://localhost:8080/callback"}'
+```
+
+### Dual Authentication Configuration
+
+**mTLS + OAuth Request:**
+```bash
+TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+curl -X POST https://api-server:9043/api/ocloudNotifications/v2/subscriptions \
+  --cert /etc/certs/client.crt \
+  --key /etc/certs/client.key \
+  --cacert /etc/certs/ca.crt \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ResourceAddress": "/sync/sync-status/sync-state", "EndpointUri": "http://localhost:8080/callback"}'
+```
+
+# Subscription API Definition
+
+## Resource Structure
 
 [Figure 1](#figure1) shows the overall resource URI structure defined
 for the subscription's API. [Table 3](#table3) lists the individual
@@ -663,9 +885,9 @@ on the resource**
 
   ------------------ -------- ------- ----------------- ------------------- -------------------
        **Name**       **Data   **P**   **Cardinality**    **Description**    **Applicability**
-                      type**                                                
+                      type**
 
-         n/a                                                                
+         n/a
   ------------------ -------- ------- ----------------- ------------------- -------------------
 
 Data structures supported by the request body of the POST method shall
@@ -707,6 +929,16 @@ body on the resource**
 |            |                  |       |                 |              | For example, the       |
 |            |                  |       |                 |              | endpoint URI does not  |
 |            |                  |       |                 |              | include 'localhost'.   |
+|            +------------------+-------+-----------------+--------------+------------------------+
+|            | n/a              |       |                 | 401          | Unauthorized.          |
+|            |                  |       |                 |              | Authentication         |
+|            |                  |       |                 |              | required. This error   |
+|            |                  |       |                 |              | is returned when mTLS  |
+|            |                  |       |                 |              | and/or OAuth           |
+|            |                  |       |                 |              | authentication fails.  |
+|            |                  |       |                 |              | Client must provide    |
+|            |                  |       |                 |              | valid certificate      |
+|            |                  |       |                 |              | and/or Bearer token.   |
 |            +------------------+-------+-----------------+--------------+------------------------+
 |            | n/a              |       |                 | 404          | Subscription resource  |
 |            |                  |       |                 |              | is not available. For  |
@@ -774,9 +1006,9 @@ method on the resource**
 
   ---------- -------- ------- ----------------- ------------------- -----------------------
    **Name**   **Data   **P**   **Cardinality**    **Description**      **Applicability**
-              type**                                                
+              type**
 
-     n/a                                                            
+     n/a
   ---------- -------- ------- ----------------- ------------------- -----------------------
 
 Data structures supported by the response body of the method shall be
@@ -847,9 +1079,9 @@ method on the resource**
 
   -------------------- -------- ------- ----------------- ------------------ -------------------
         **Name**        **Data   **P**   **Cardinality**   **Description**    **Applicability**
-                        type**                                               
+                        type**
 
-          n/a                                                                
+          n/a
   -------------------- -------- ------- ----------------- ------------------ -------------------
 
 Data structures supported by the request body of the DELETE method shall
@@ -860,9 +1092,9 @@ body on the resource**
 
   ------------ --------- ----------------- ------------------------------------
      **Data      **P**    **Cardinality**            **Description**
-     type**                                
+     type**
 
-      n/a                                  
+      n/a
   ------------ --------- ----------------- ------------------------------------
 
 Data structures supported by the response body of the method shall be
@@ -880,6 +1112,13 @@ response body on the resource**
 |            |          |       |                 |              | ../subscriptions/*{subscriptionId} |
 |            |          |       |                 |              | deletes an individual subscription |
 |            |          |       |                 |              | resource.                          |
+|            +----------+-------+-----------------+--------------+------------------------------------+
+|            | n/a      |       |                 | 401          | Unauthorized. Authentication       |
+|            |          |       |                 |              | required. Client must provide      |
+|            |          |       |                 |              | valid mTLS certificate and/or      |
+|            |          |       |                 |              | OAuth Bearer token.                |
+|            +----------+-------+-----------------+--------------+------------------------------------+
+|            | n/a      |       |                 | 404          | Subscription resource not found.   |
 +------------+----------+-------+-----------------+--------------+------------------------------------+
 
 #### Individual Subscription GET Method
@@ -898,9 +1137,9 @@ method on the resource**
 
   -------------------- -------- ------- ----------------- ------------------ -------------------
         **Name**        **Data   **P**   **Cardinality**   **Description**    **Applicability**
-                        type**                                               
+                        type**
 
-          n/a                                                                
+          n/a
   -------------------- -------- ------- ----------------- ------------------ -------------------
 
 Data structures supported by the request body of the GET method shall be
@@ -911,9 +1150,9 @@ body on the resource**
 
   ----------- --------- ----------------- -------------------------------------
     **Data      **P**    **Cardinality**             **Description**
-    type**                                
+    type**
 
-      n/a                                 
+      n/a
   ----------- --------- ----------------- -------------------------------------
 
 Data structures supported by the response body of the method shall be
@@ -942,9 +1181,9 @@ response body on the resource**
 **Note**: The *SubscriptionInfo* is defined in the subscription Data
 Model section
 
-# Status Notifications API Definition 
+# Status Notifications API Definition
 
-## Description 
+## Description
 
 After a successful subscription (a subscription resource was created)
 the Event Consumer (e.g. vO-DU or other CNF) shall be able to receive
@@ -1039,9 +1278,9 @@ method on the resource**
 
   ----------- ----------- ------- ------------------ ----------------- -------------------
    **Name**     **Data     **P**   **Cardinality**    **Description**   **Applicability**
-                Type**                                                 
+                Type**
 
-      n/a                                                              
+      n/a
   ----------- ----------- ------- ------------------ ----------------- -------------------
 
 Data structures supported by the request body of the POST method shall
@@ -1083,7 +1322,7 @@ response body on the resource**
 |                                                                                                              |
 +--------------------------------------------------------------------------------------------------------------+
 
-> 
+>
 
 \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
 
@@ -1153,9 +1392,9 @@ method on the resource**
 
   ---------- -------- ------- ----------------- ------------------- ------------------------
    **Name**   **Data   **P**   **Cardinality**    **Description**      **Applicability**
-              type**                                                
+              type**
 
-     n/a                                                            
+     n/a
   ---------- -------- ------- ----------------- ------------------- ------------------------
 
 Data structures supported by the request body of the POST method shall
@@ -1166,7 +1405,7 @@ body on the resource**
 
   ----------- --------- ----------------- -------------------------------------
     **Data      **P**    **Cardinality**             **Description**
-    type**                                
+    type**
 
      Event        M             1            The payload will include event
                                               notification. See note below.
@@ -1194,7 +1433,7 @@ response body on the resource**
 |            | n/a     | O     | 0..1            | 404          | URI not found.          |
 +------------+---------+-------+-----------------+--------------+-------------------------+
 
-# Event Pull Status Notifications API Definition 
+# Event Pull Status Notifications API Definition
 
 ## Description
 
@@ -1286,9 +1525,9 @@ method on the resource**
 
   ----------------------- -------- ------- ----------------- ----------------- -------------------
          **Name**          **Data   **P**   **Cardinality**   **Description**   **Applicability**
-                           type**                                              
+                           type**
 
-            n/a                                                                
+            n/a
   ----------------------- -------- ------- ----------------- ----------------- -------------------
 
 Data structures supported by the request body of the GET method shall be
@@ -1299,9 +1538,9 @@ body on the resource**
 
   ------------ --------- ----------------- ------------------------------------
      **Data      **P**    **Cardinality**            **Description**
-     type**                                
+     type**
 
-      n/a                                  
+      n/a
   ------------ --------- ----------------- ------------------------------------
 
 Data structures supported by the response body of the method shall be
@@ -1331,7 +1570,7 @@ Sync-State]{.underline}](#_9s5i4y3v6j4g). In future versions of this
 specification, status information can be expanded to other metrics /
 information pertinent to the operation of the system.
 
-# Event Data Model 
+# Event Data Model
 
 ## Subscription Data Model
 
@@ -1555,7 +1794,7 @@ of the two approaches) \*may\* be more useful to convey the information
 in detail required to adequately specify the states in the cloud nodes
 context.
 
-#### 
+####
 
 #### Synchronization State
 
@@ -1591,7 +1830,7 @@ System Clock which is consumable by application(s).
 |              |                                                     | G.810                               |
 +--------------+-----------------------------------------------------+-------------------------------------+
 
-#### 
+####
 
 #### PTP Synchronization State
 
@@ -1621,7 +1860,7 @@ System Clock which is consumable by application(s).
 |              |                                        | G.810                               |
 +--------------+----------------------------------------+-------------------------------------+
 
-#### 
+####
 
 #### Void
 
@@ -1753,12 +1992,12 @@ change attribute in the Announce message changes.
                                                                   is generated when the clock-class
                                                                               changes.
 
-    value_type                       metric                     
+    value_type                       metric
 
       value                          Uint8                            New clock class attribute
   -------------- ---------------------------------------------- -------------------------------------
 
-#### 
+####
 
 #### SyncE Clock Quality Change
 
@@ -1779,14 +2018,14 @@ clock quality attribute in the ESMC message changes.
                                                                        notification is generated when the
                                                                              clock-quality changes.
 
-    value_type                          metric                        
+    value_type                          metric
 
       value                             Uint8                              New clock quality attribute
   -------------- ---------------------------------------------------- -------------------------------------
 
-#### 
+####
 
-#### 
+####
 
   -----------------------------------------------------------------------
 
@@ -1828,7 +2067,7 @@ height="2.2918044619422573in"}
 
 - Eliminating the discovery of an external pod implementation
 
-## 
+##
 
 ######## Annex (informative): Change History
 
