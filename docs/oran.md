@@ -601,7 +601,7 @@ mTLS provides transport layer security by requiring both the client and server t
 - Certificate-based client authentication
 - Encrypted communication channel
 - Certificate verification against trusted Certificate Authority (CA)
-- Support for OpenShift Service CA for automatic certificate management
+- Support for platform-specific CA services for automatic certificate management
 
 **Implementation Requirements:**
 - Client must present valid X.509 certificate signed by trusted CA
@@ -618,7 +618,7 @@ mTLS provides transport layer security by requiring both the client and server t
 OAuth 2.0 provides application layer authentication using Bearer tokens (JWT - JSON Web Tokens).
 
 **Supported Token Types:**
-1. **OpenShift OAuth Tokens**: Issued by OpenShift OAuth server
+1. **Platform OAuth Tokens**: Issued by the platform's OAuth server
 2. **Kubernetes ServiceAccount Tokens**: Native Kubernetes authentication tokens
 
 **Token Validation:**
@@ -630,7 +630,7 @@ OAuth 2.0 provides application layer authentication using Bearer tokens (JWT - J
 
 **Implementation Requirements:**
 - Client includes Bearer token in Authorization header: `Authorization: Bearer <token>`
-- Server validates token against OpenShift OAuth server or Kubernetes API
+- Server validates token against the platform's OAuth server or Kubernetes API
 - Token introspection performed on each API request
 - Failed validation results in 401 Unauthorized response
 
@@ -699,7 +699,7 @@ The following table describes authentication requirements for each API endpoint:
 - Implement certificate revocation checking (CRL or OCSP)
 - Store private keys securely (encrypted, restricted access)
 
-**OpenShift Service CA Integration:**
+**Platform Certificate Authority Integration:**
 - Automatic certificate issuance and rotation
 - Certificates mounted as Kubernetes Secrets
 - Trust bundle distributed via ConfigMaps
