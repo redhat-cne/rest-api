@@ -89,7 +89,7 @@ github.com/redhat-cne/sdk-go/v1/pubsub
 github.com/redhat-cne/sdk-go/v1/subscriber
 # github.com/rogpeppe/go-internal v1.10.0
 ## explicit; go 1.19
-# github.com/sirupsen/logrus v1.8.1
+# github.com/sirupsen/logrus v1.8.3
 ## explicit; go 1.13
 github.com/sirupsen/logrus
 # github.com/stretchr/testify v1.8.0
