@@ -4,12 +4,13 @@
   "caCertPath": "/etc/cloud-event-proxy/ca-bundle/service-ca.crt",
   "serverCertPath": "/etc/cloud-event-proxy/server-certs/tls.crt",
   "serverKeyPath": "/etc/cloud-event-proxy/server-certs/tls.key",
+
   "enableOAuth": true,
   "useOpenShiftOAuth": true,
-  "oauthIssuer": "https://oauth-openshift.apps.your-cluster.com",
-  "oauthJWKSURL": "https://oauth-openshift.apps.your-cluster.com/oauth/jwks",
-  "requiredScopes": ["user:info"],
-  "requiredAudience": "openshift",
+  "requiredAudiences": ["https://kubernetes.default.svc"],
   "serviceAccountName": "cloud-event-proxy-sa",
-  "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
+  "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token",
+
+  "tlsMinVersion": "VersionTLS12",
+  "tlsCipherSuites": []
 }

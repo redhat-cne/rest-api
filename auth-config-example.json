@@ -5,8 +5,10 @@
   "serverKeyPath": "/etc/certs/server.key",
 
   "enableOAuth": true,
-  "oauthIssuer": "https://your-oauth-provider.com",
-  "oauthJWKSURL": "https://your-oauth-provider.com/.well-known/jwks.json",
-  "requiredScopes": ["subscription:create", "events:read"],
-  "requiredAudience": "rest-api-service"
+  "requiredAudiences": ["https://kubernetes.default.svc"],
+  "serviceAccountName": "cloud-event-proxy-sa",
+  "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token",
+
+  "tlsMinVersion": "VersionTLS12",
+  "tlsCipherSuites": []
 }
