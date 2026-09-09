@@ -162,12 +162,12 @@ func cipherSuitesFromNames(names []string) []uint16 {
 	return out
 }
 
-// applyTLSProfile applies the centrally-managed TLS profile (min version and
+// ApplyTLSProfile applies the centrally-managed TLS profile (min version and
 // cipher suites, sourced from the cluster's TLSSecurityProfile via the
 // operator) onto a tls.Config. Nothing is hardcoded here: values come from the
 // AuthConfig. Only when no min version is supplied at all do we fall back to
 // TLS 1.2 to avoid negotiating an insecure protocol by default.
-func (c *AuthConfig) applyTLSProfile(cfg *tls.Config) {
+func (c *AuthConfig) ApplyTLSProfile(cfg *tls.Config) {
 	if c == nil {
 		return
 	}

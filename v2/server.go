@@ -320,7 +320,7 @@ func InitServer(port int, apiHost, apiPath, storePath string,
 			tlsClientConfig := &tls.Config{
 				RootCAs: ServerInstance.caCertPool,
 			}
-			authConfig.applyTLSProfile(tlsClientConfig)
+			authConfig.ApplyTLSProfile(tlsClientConfig)
 			ServerInstance.HTTPClient = &http.Client{
 				Transport: &http.Transport{
 					MaxIdleConnsPerHost: 20,
@@ -697,7 +697,7 @@ func (s *Server) Start() {
 				ClientCAs:    s.caCertPool,
 			}
 			// Apply the centrally-managed TLS profile (min version + ciphers).
-			s.authConfig.applyTLSProfile(tlsConfig)
+			s.authConfig.ApplyTLSProfile(tlsConfig)
 
 			s.httpServer.TLSConfig = tlsConfig
 
