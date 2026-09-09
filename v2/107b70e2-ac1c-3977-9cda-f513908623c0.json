@@ -1,0 +1,16 @@
+{
+ "clientID": "107b70e2-ac1c-3977-9cda-f513908623c0",
+ "subStore": {
+  "store": {
+   "cdc51d4f-6256-49aa-97c6-e378f5c7ff4a": {
+    "ResourceAddress": "/east-edge-10/Node3/sync/sync-status/sync-state",
+    "EndpointUri": "http://localhost:8990/api/ocloudNotifications/v2/dummy",
+    "SubscriptionId": "cdc51d4f-6256-49aa-97c6-e378f5c7ff4a",
+    "UriLocation": "http://localhost:8990/api/ocloudNotifications/v2/subscriptions/cdc51d4f-6256-49aa-97c6-e378f5c7ff4a"
+   }
+  }
+ },
+ "EndpointUri": "http://localhost:8990/api/ocloudNotifications/v2/dummy",
+ "status": 1,
+ "action": 0
+}
