@@ -1,0 +1,202 @@
+# Unified OpenShift Authentication Configuration
+# Works for both single node and multi-node OpenShift clusters
+# Uses OpenShift's built-in Service CA and OAuth server
+
+---
+# Service with Service CA annotation for automatic certificate generation
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/scrape: "false"
+    service.beta.openshift.io/serving-cert-secret-name: cloud-event-proxy-tls
+  labels:
+    app: linuxptp-daemon
+  name: ptp-event-publisher-service-{{.NodeName}}
+  namespace: openshift-ptp
+spec:
+  clusterIP: None
+  selector:
+    app: linuxptp-daemon
+    nodeName: {{.NodeName}}
+  ports:
+    - name: publisher-port
+      port: 9043
+  sessionAffinity: None
+  type: ClusterIP
+
+---
+# ConfigMap for cluster information
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-info
+  namespace: openshift-ptp
+data:
+  cluster-name: "{{.ClusterName}}"
+
+---
+# ConfigMap for authentication configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloud-event-proxy-auth-config
+  namespace: openshift-ptp
+data:
+  auth-config.json: |
+    {
+      "enableMTLS": true,
+      "useServiceCA": true,
+      "caCertPath": "/etc/cloud-event-proxy/ca-bundle/service-ca.crt",
+      "serverCertPath": "/etc/cloud-event-proxy/server-certs/tls.crt",
+      "serverKeyPath": "/etc/cloud-event-proxy/server-certs/tls.key",
+      "enableOAuth": true,
+      "useOpenShiftOAuth": true,
+      "requiredAudiences": ["https://kubernetes.default.svc"],
+      "serviceAccountName": "cloud-event-proxy-sa",
+      "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    }
+
+---
+# ServiceAccount for the cloud-event-proxy
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cloud-event-proxy-sa
+  namespace: openshift-ptp
+
+---
+# Role for cloud-event-proxy permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cloud-event-proxy-role
+  namespace: openshift-ptp
+rules:
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "update", "patch"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch"]
+
+---
+# RoleBinding to bind ServiceAccount to Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cloud-event-proxy-binding
+  namespace: openshift-ptp
+subjects:
+- kind: ServiceAccount
+  name: cloud-event-proxy-sa
+  namespace: openshift-ptp
+roleRef:
+  kind: Role
+  name: cloud-event-proxy-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# ClusterRole granting permission to create TokenReviews. The server validates
+# OAuth bearer tokens by calling the Kubernetes TokenReview API, which requires
+# this cluster-scoped permission (equivalent to the built-in
+# system:auth-delegator ClusterRole).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cloud-event-proxy-tokenreview
+rules:
+- apiGroups: ["authentication.k8s.io"]
+  resources: ["tokenreviews"]
+  verbs: ["create"]
+
+---
+# ClusterRoleBinding binding the TokenReview ClusterRole to the server SA.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cloud-event-proxy-tokenreview
+subjects:
+- kind: ServiceAccount
+  name: cloud-event-proxy-sa
+  namespace: openshift-ptp
+roleRef:
+  kind: ClusterRole
+  name: cloud-event-proxy-tokenreview
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# ConfigMap that OpenShift's Service CA operator populates with the cluster's
+# Service CA bundle (service-ca.crt). This is the CA that signs the serving
+# certificate above, so it is what clients and the server's own mTLS pool must
+# trust - NOT the serving-cert Secret (which holds tls.crt/tls.key, not a CA).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloud-event-proxy-ca-bundle
+  namespace: openshift-ptp
+  annotations:
+    service.beta.openshift.io/inject-cabundle: "true"
+
+---
+# DaemonSet configuration for cloud-event-proxy
+# Works on both single node and multi-node clusters
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: linuxptp-daemon
+  namespace: openshift-ptp
+spec:
+  selector:
+    matchLabels:
+      app: linuxptp-daemon
+      nodeName: {{.NodeName}}
+  template:
+    metadata:
+      labels:
+        app: linuxptp-daemon
+        nodeName: {{.NodeName}}
+    spec:
+      serviceAccountName: cloud-event-proxy-sa
+      containers:
+      - name: cloud-event-proxy
+        image: quay.io/redhat-cne/cloud-event-proxy:latest
+        args:
+          - "--auth-config=/etc/cloud-event-proxy/auth/auth-config.json"
+        env:
+        - name: CLUSTER_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: cluster-info
+              key: cluster-name
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        - name: server-certs
+          mountPath: /etc/cloud-event-proxy/server-certs
+          readOnly: true
+        - name: ca-bundle
+          mountPath: /etc/cloud-event-proxy/ca-bundle
+          readOnly: true
+        - name: auth-config
+          mountPath: /etc/cloud-event-proxy/auth
+          readOnly: true
+      volumes:
+      - name: server-certs
+        secret:
+          secretName: cloud-event-proxy-tls
+      # The CA bundle comes from the Service CA ConfigMap (service-ca.crt),
+      # not the serving-cert Secret. caCertPath above points at
+      # /etc/cloud-event-proxy/ca-bundle/service-ca.crt, which this ConfigMap
+      # provides. Without a valid CA the server fails closed and will not serve.
+      - name: ca-bundle
+        configMap:
+          name: cloud-event-proxy-ca-bundle
+      - name: auth-config
+        configMap:
+          name: cloud-event-proxy-auth-config
