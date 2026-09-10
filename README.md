@@ -16,16 +16,16 @@ This REST API supports enterprise-grade authentication using mTLS and OAuth with
 
 ### Security Features
 
-- **Strict OAuth Validation**: JWT tokens are validated against the configured issuer with no bypass mechanisms
-- **Issuer Verification**: Token issuer must exactly match the configured OAuth issuer
-- **Expiration Checking**: Expired tokens are rejected with clear error messages
-- **Audience Validation**: Tokens must contain the required audience claim
+- **Server-side OAuth Validation**: Bearer tokens are validated by the Kubernetes TokenReview API (issuer, signature, expiry, audience) with no bypass mechanisms
+- **Audience Binding**: `requiredAudiences` ensures tokens minted for other services are rejected
+- **Expiration Checking**: Expired tokens are rejected by TokenReview
 - **mTLS Certificate Validation**: Client certificates are verified against the configured CA
+- **SSRF Hardening**: Caller-supplied endpoint URIs are validated (resolve-then-connect, no redirects) before the server dials them
 
 ### Recent Security Improvements
 
-- **Fixed OAuth Security Vulnerability** (v2.1.0): Implemented proper OAuth token validation to prevent unauthorized access
-- **Added JWT Library Support**: Uses `golang-jwt/jwt/v5` for secure token parsing and validation
+- **TokenReview-based OAuth**: Token validation is delegated to the Kubernetes API server; the library performs no local JWT parsing or JWKS fetching
+- **Bounded Token Cache**: Validated results are cached briefly with a short TTL to bound TokenReview load
 - **Enhanced Error Handling**: Clear error messages for authentication failures without exposing sensitive information
 
 ## O-RAN Compliant REST API Specification

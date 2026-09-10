@@ -7,37 +7,42 @@ This document describes how to configure mTLS (mutual TLS) and OAuth authenticat
 The REST API supports two authentication mechanisms that can be applied to specific endpoints:
 
 1. **mTLS (Mutual TLS)**: Client certificate-based authentication using OpenShift Service CA
-2. **OAuth**: Bearer token-based authentication using OpenShift's built-in OAuth server and JWT tokens with **strict validation**
+2. **OAuth**: Bearer token-based authentication. Tokens are validated server-side via the Kubernetes **TokenReview** API, which verifies the token's issuer, signature, expiry, and audience. The REST API library itself does not parse JWTs or fetch a JWKS; it delegates verification to the cluster and only enforces the required audiences it is configured with.
 
 Both mechanisms can be enabled independently or together for enhanced security. This unified approach works seamlessly for both single node and multi-node OpenShift clusters, providing enterprise-grade security with minimal complexity.
 
 ### Security Guarantees
 
-- **No Authentication Bypass**: When OAuth is enabled, all requests must include valid JWT tokens
-- **Strict Issuer Validation**: Token issuer must exactly match the configured OAuth issuer
-- **Comprehensive Token Validation**: Expiration, audience, and signature verification
+- **No Authentication Bypass**: When OAuth is enabled, every non-loopback request must present a valid bearer token
+- **Server-side Token Validation**: Issuer, signature, expiry, and audience are all validated by the Kubernetes TokenReview API
+- **Audience Binding**: When `requiredAudiences` is configured, the token must be bound to one of those audiences
 - **Clear Error Messages**: Authentication failures return specific error codes without exposing sensitive information
 
 ## Protected vs Public Endpoints
 
 ### Protected Endpoints (Require Authentication)
 
-The following endpoints require authentication when enabled:
+When authentication is enabled, **every** data endpoint requires authentication for non-loopback requests. Only `GET /health` is exempt. (Requests originating from the pod's own loopback interface are treated as a trusted same-pod fast-path and skip authentication.)
 
 #### Subscription Management
 - `POST /subscriptions` - Create subscription
+- `GET /subscriptions` - List all subscriptions
+- `GET /subscriptions/{subscriptionId}` - Get subscription details
 - `DELETE /subscriptions/{subscriptionId}` - Delete specific subscription
 - `DELETE /subscriptions` - Delete all subscriptions
 - `PUT /subscriptions/status/{subscriptionId}` - Ping for subscription status
 
 #### Publisher Management
 - `POST /publishers` - Create publisher
+- `GET /publishers` - List all publishers
+- `GET /publishers/{publisherid}` - Get publisher details
 - `DELETE /publishers/{publisherid}` - Delete specific publisher
 - `DELETE /publishers` - Delete all publishers
 
 #### Event Management
 - `POST /create/event` - Publish event
 - `POST /log` - Log event
+- `GET /{ResourceAddress}/CurrentState` - Get current state
 
 #### Test Endpoints
 - `POST /dummy` - Test endpoint
@@ -45,14 +50,9 @@ The following endpoints require authentication when enabled:
 
 ### Public Endpoints (No Authentication Required)
 
-These endpoints remain accessible without authentication:
+Only the health endpoint is reachable without authentication:
 
-#### Read Operations
-- `GET /subscriptions` - List all subscriptions
-- `GET /subscriptions/{subscriptionId}` - Get subscription details
-- `GET /publishers` - List all publishers
-- `GET /publishers/{publisherid}` - Get publisher details
-- `GET /{ResourceAddress}/CurrentState` - Get current state
+- `GET /health` - Service health check (see the special mTLS behavior below)
 
 ### Health Endpoint Behavior
 
@@ -108,15 +108,19 @@ type AuthConfig struct {
     ServerKeyPath  string `json:"serverKeyPath"`
     UseServiceCA   bool   `json:"useServiceCA"` // Use OpenShift Service CA (recommended for all cluster sizes)
 
-    // OAuth configuration using OpenShift OAuth Server - works for both single and multi-node clusters
+    // OAuth 2.0 / bearer-token configuration. Tokens are validated by the
+    // TokenValidator installed via Server.SetTokenValidator (cloud-event-proxy
+    // uses the Kubernetes TokenReview API), so no issuer/JWKS is configured here.
     EnableOAuth         bool     `json:"enableOAuth"`
-    OAuthIssuer         string   `json:"oauthIssuer"`         // OpenShift OAuth server URL
-    OAuthJWKSURL        string   `json:"oauthJWKSURL"`        // OpenShift JWKS endpoint
-    RequiredScopes      []string `json:"requiredScopes"`      // Required OAuth scopes
-    RequiredAudience    string   `json:"requiredAudience"`    // Required OAuth audience
-    ServiceAccountName  string   `json:"serviceAccountName"`  // ServiceAccount for client authentication
-    ServiceAccountToken string   `json:"serviceAccountToken"` // ServiceAccount token path
-    UseOpenShiftOAuth   bool     `json:"useOpenShiftOAuth"`   // Use OpenShift's built-in OAuth server (recommended for all cluster sizes)
+    RequiredAudiences   []string `json:"requiredAudiences"`   // Required token audiences (validated by TokenReview)
+    ServiceAccountName  string   `json:"serviceAccountName"`  // ServiceAccount used by clients for authentication
+    ServiceAccountToken string   `json:"serviceAccountToken"` // ServiceAccount token path (client side)
+    UseOpenShiftOAuth   bool     `json:"useOpenShiftOAuth"`   // Client hint: obtain tokens from OpenShift OAuth
+
+    // TLS profile - centrally managed by the cluster's TLSSecurityProfile and
+    // propagated by the operator. Nothing is hardcoded in this library.
+    TLSMinVersion   string   `json:"tlsMinVersion"`   // e.g. "VersionTLS12", "VersionTLS13"
+    TLSCipherSuites []string `json:"tlsCipherSuites"` // IANA cipher suite names
 }
 ```
 
@@ -133,14 +137,13 @@ See `openshift-auth-config.json` for a complete configuration example that works
   "serverKeyPath": "/etc/cloud-event-proxy/server-certs/tls.key",
   "enableOAuth": true,
   "useOpenShiftOAuth": true,
-  "oauthIssuer": "https://oauth-openshift.apps.your-cluster.com",
-  "oauthJWKSURL": "https://oauth-openshift.apps.your-cluster.com/.well-known/jwks.json",
-  "requiredScopes": ["user:info"],
-  "requiredAudience": "openshift",
+  "requiredAudiences": ["https://kubernetes.default.svc"],
   "serviceAccountName": "cloud-event-proxy-sa",
   "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
 }
 ```
+
+> **Note:** There is no `oauthIssuer`, `oauthJWKSURL`, `requiredScopes`, or `requiredAudience` (singular) field. Token issuer, signature, and expiry are validated by the Kubernetes TokenReview API. The only OAuth policy this library enforces locally is `requiredAudiences` (an array): the presented token must be bound to one of the listed audiences.
 
 ## OpenShift Integration
 
@@ -174,20 +177,20 @@ spec:
   type: ClusterIP
 ```
 
-### OpenShift OAuth Server
+### OpenShift OAuth / TokenReview
 
-The OAuth implementation uses OpenShift's built-in OAuth server:
+The OAuth implementation validates bearer tokens through the Kubernetes TokenReview API:
 
 #### Prerequisites
 - OpenShift cluster (single node or multi-node)
-- ServiceAccount with appropriate RBAC permissions
+- The server's ServiceAccount must be permitted to create `tokenreviews` (via the `system:auth-delegator` ClusterRole or an equivalent binding)
 - No additional operators required
 
 #### OAuth Configuration
-- **OAuth Server**: Uses OpenShift's built-in OAuth server
-- **JWKS Endpoint**: OpenShift's JWKS endpoint for token validation
-- **ServiceAccount Tokens**: For client authentication
-- **RBAC**: Role-based access control for API permissions
+- **Token Validation**: The server calls the Kubernetes TokenReview API, which verifies issuer, signature, expiry, and audience server-side
+- **ServiceAccount Tokens**: Clients present a projected ServiceAccount token bound to the required audience
+- **Audience Binding**: `requiredAudiences` enforces that the token was minted for this service
+- **RBAC**: The server SA needs `create` on `authentication.k8s.io/tokenreviews`
 
 #### Example ServiceAccount Configuration
 ```yaml
@@ -291,16 +294,21 @@ curl -X DELETE https://localhost:9043/api/ocloudNotifications/v2/publishers/publ
   -H "Authorization: Bearer valid_your_jwt_token_here"
 ```
 
-### Public Endpoint Examples
+### Read (GET) Endpoint Examples
 
-#### List Subscriptions (no authentication required)
+`GET` endpoints are protected too - when authentication is enabled they require the same mTLS client certificate and/or bearer token as the write endpoints.
+
+#### List Subscriptions
 
 ```bash
-# Over HTTPS (when mTLS is enabled)
+# With both mTLS and OAuth
 curl -X GET https://localhost:9043/api/ocloudNotifications/v2/subscriptions \
-  --cacert ca.crt
+  --cert client.crt \
+  --key client.key \
+  --cacert ca.crt \
+  -H "Authorization: Bearer valid_your_token_here"
 
-# Over HTTP (when mTLS is disabled)
+# When authentication is disabled (plain HTTP, no auth)
 curl -X GET http://localhost:9043/api/ocloudNotifications/v2/subscriptions
 ```
 
@@ -323,44 +331,40 @@ curl -X GET https://localhost:9043/api/ocloudNotifications/v2/health \
 
 ## OAuth Security Implementation
 
-### Strict Validation Features
+### Validation via Kubernetes TokenReview
 
-The OAuth implementation includes comprehensive security measures:
+The OAuth implementation delegates all cryptographic token validation to the Kubernetes TokenReview API. The following checks are performed server-side by the cluster:
 
-1. **Issuer Validation**:
-   ```
-   Token issuer mismatch: expected https://oauth-openshift.apps.cluster.com, got https://dummy.com
-   ```
-   - Tokens from unauthorized issuers are immediately rejected
-   - No bypass mechanisms or fallbacks
+1. **Issuer & Signature Validation**:
+   - The token's issuer and signature are verified by the cluster; tokens the API server does not recognize are rejected.
+   - No bypass mechanisms or fallbacks.
 
 2. **Expiration Checking**:
    ```
    Token expired
    ```
-   - Expired tokens are rejected with clear error messages
-   - Time-based validation prevents replay attacks
+   - Expired tokens are rejected by TokenReview.
 
 3. **Audience Validation**:
    ```
    Token audience validation failed
    ```
-   - Tokens must contain the required audience claim
-   - Prevents token misuse across different services
+   - When `requiredAudiences` is set, the token must be bound to one of those audiences.
+   - Prevents token misuse across different services.
 
 4. **Missing Token Handling**:
    ```
    Authorization header required
    Bearer token required
    ```
-   - Clear error messages for missing or malformed tokens
-   - Proper HTTP status codes (401 Unauthorized)
+   - Clear error messages for missing or malformed tokens.
+   - Proper HTTP status codes (401 Unauthorized).
 
-### Security Libraries
+### Security Properties
 
-- **JWT Library**: Uses `golang-jwt/jwt/v5` for secure token parsing and validation
-- **Cryptographic Verification**: Full signature validation against JWKS endpoints
-- **Memory Safety**: Secure token handling without exposing sensitive data in logs
+- **No local JWT parsing / JWKS fetching**: verification is performed by the Kubernetes API server via TokenReview.
+- **Bounded token cache**: validated results are cached briefly with a short TTL to bound TokenReview load.
+- **Memory Safety**: tokens are never logged or otherwise exposed.
 
 ## Security Considerations
 
@@ -370,10 +374,10 @@ The OAuth implementation includes comprehensive security measures:
    - Use OpenShift Service CA for automated certificate management
 
 2. **OAuth Security**
-   - **Strict Validation**: All tokens are validated against the exact configured issuer
-   - **No Bypass Mechanisms**: Authentication cannot be bypassed with mismatched issuers
-   - Implement token caching and JWKS key rotation
-   - Validate all claims (issuer, audience, scopes, expiration)
+   - **Server-side Validation**: All tokens are validated by the Kubernetes TokenReview API (issuer, signature, expiry, audience)
+   - **No Bypass Mechanisms**: Non-loopback requests without a valid token are rejected with 401
+   - **Audience Binding**: Configure `requiredAudiences` so tokens minted for other services are rejected
+   - A short-TTL cache bounds TokenReview load without weakening validation
 
 3. **TLS Configuration**
    - Use TLS 1.2 or higher

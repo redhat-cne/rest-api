@@ -52,10 +52,7 @@ data:
       "serverKeyPath": "/etc/cloud-event-proxy/server-certs/tls.key",
       "enableOAuth": true,
       "useOpenShiftOAuth": true,
-      "oauthIssuer": "https://oauth-openshift.apps.{{.ClusterName}}",
-      "oauthJWKSURL": "https://oauth-openshift.apps.{{.ClusterName}}/oauth/jwks",
-      "requiredScopes": ["user:info"],
-      "requiredAudience": "openshift",
+      "requiredAudiences": ["https://kubernetes.default.svc"],
       "serviceAccountName": "cloud-event-proxy-sa",
       "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
     }
@@ -101,6 +98,48 @@ roleRef:
   kind: Role
   name: cloud-event-proxy-role
   apiGroup: rbac.authorization.k8s.io
+
+---
+# ClusterRole granting permission to create TokenReviews. The server validates
+# OAuth bearer tokens by calling the Kubernetes TokenReview API, which requires
+# this cluster-scoped permission (equivalent to the built-in
+# system:auth-delegator ClusterRole).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cloud-event-proxy-tokenreview
+rules:
+- apiGroups: ["authentication.k8s.io"]
+  resources: ["tokenreviews"]
+  verbs: ["create"]
+
+---
+# ClusterRoleBinding binding the TokenReview ClusterRole to the server SA.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cloud-event-proxy-tokenreview
+subjects:
+- kind: ServiceAccount
+  name: cloud-event-proxy-sa
+  namespace: openshift-ptp
+roleRef:
+  kind: ClusterRole
+  name: cloud-event-proxy-tokenreview
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# ConfigMap that OpenShift's Service CA operator populates with the cluster's
+# Service CA bundle (service-ca.crt). This is the CA that signs the serving
+# certificate above, so it is what clients and the server's own mTLS pool must
+# trust - NOT the serving-cert Secret (which holds tls.crt/tls.key, not a CA).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloud-event-proxy-ca-bundle
+  namespace: openshift-ptp
+  annotations:
+    service.beta.openshift.io/inject-cabundle: "true"
 
 ---
 # DaemonSet configuration for cloud-event-proxy
@@ -151,9 +190,13 @@ spec:
       - name: server-certs
         secret:
           secretName: cloud-event-proxy-tls
+      # The CA bundle comes from the Service CA ConfigMap (service-ca.crt),
+      # not the serving-cert Secret. caCertPath above points at
+      # /etc/cloud-event-proxy/ca-bundle/service-ca.crt, which this ConfigMap
+      # provides. Without a valid CA the server fails closed and will not serve.
       - name: ca-bundle
-        secret:
-          secretName: cloud-event-proxy-tls
+        configMap:
+          name: cloud-event-proxy-ca-bundle
       - name: auth-config
         configMap:
           name: cloud-event-proxy-auth-config
