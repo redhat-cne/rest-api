@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -483,7 +484,7 @@ func TestServer_CreatePublisher(t *testing.T) {
 // 5.3.6.5 (1) Expected results: The return code is “200 OK”.
 func TestServer_GetCurrentState_OK(t *testing.T) {
 	ctx := context.Background()
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, ObjSub.Resource, "CurrentState"), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, strings.TrimPrefix(ObjSub.Resource, "/"), "CurrentState"), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -511,7 +512,7 @@ func TestServer_GetCurrentState_KO_ResourceInvalid(t *testing.T) {
 
 	// try getting event
 	time.Sleep(2 * time.Second)
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, resourceInvalid, "CurrentState"), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, strings.TrimPrefix(resourceInvalid, "/"), "CurrentState"), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -543,7 +544,7 @@ func onReceiveOverrideFnEmptyEventData(e cloudevents.Event, d *channel.DataChan)
 func TestServer_GetCurrentState_KO_EmptyEventData(t *testing.T) {
 	server.SetOnStatusReceiveOverrideFn(onReceiveOverrideFnEmptyEventData)
 	ctx := context.Background()
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, ObjSub.Resource, "CurrentState"), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, strings.TrimPrefix(ObjSub.Resource, "/"), "CurrentState"), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -579,7 +580,7 @@ func onReceiveOverrideFnInvalidEventData(e cloudevents.Event, d *channel.DataCha
 func TestServer_GetCurrentState_KO_InvalidEventData(t *testing.T) {
 	server.SetOnStatusReceiveOverrideFn(onReceiveOverrideFnInvalidEventData)
 	ctx := context.Background()
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, ObjSub.Resource, "CurrentState"), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, strings.TrimPrefix(ObjSub.Resource, "/"), "CurrentState"), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -614,7 +615,7 @@ func onReceiveOverrideFnEventNotFound(e cloudevents.Event, d *channel.DataChan) 
 func TestServer_GetCurrentState_KO_EventNotFound(t *testing.T) {
 	server.SetOnStatusReceiveOverrideFn(onReceiveOverrideFnEventNotFound)
 	ctx := context.Background()
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, ObjSub.Resource, "CurrentState"), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, strings.TrimPrefix(ObjSub.Resource, "/"), "CurrentState"), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
@@ -650,7 +651,7 @@ func onReceiveOverrideFnPTPNotSet(e cloudevents.Event, d *channel.DataChan) erro
 func TestServer_GetCurrentState_KO_PTPNotSet(t *testing.T) {
 	server.SetOnStatusReceiveOverrideFn(onReceiveOverrideFnPTPNotSet)
 	ctx := context.Background()
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, ObjSub.Resource, "CurrentState"), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://localhost:%d%s%s/%s", port, apPath, strings.TrimPrefix(ObjSub.Resource, "/"), "CurrentState"), nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.HTTPClient.Do(req)
