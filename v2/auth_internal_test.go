@@ -104,7 +104,7 @@ func TestApplyTLSProfile(t *testing.T) {
 		TLSMinVersion:   "VersionTLS13",
 		TLSCipherSuites: []string{"TLS_AES_128_GCM_SHA256", "bogus-name"},
 	}
-	cfg := &tls.Config{}
+	cfg := &tls.Config{} //nolint:gosec // MinVersion set by ApplyTLSProfile under test
 	c.ApplyTLSProfile(cfg)
 	if cfg.MinVersion != tls.VersionTLS13 {
 		t.Errorf("MinVersion = %x, want TLS13", cfg.MinVersion)
@@ -112,7 +112,7 @@ func TestApplyTLSProfile(t *testing.T) {
 
 	// No profile => default floor of TLS 1.2, existing MinVersion preserved.
 	empty := &AuthConfig{}
-	cfg2 := &tls.Config{}
+	cfg2 := &tls.Config{} //nolint:gosec // MinVersion set by ApplyTLSProfile under test
 	empty.ApplyTLSProfile(cfg2)
 	if cfg2.MinVersion != tls.VersionTLS12 {
 		t.Errorf("default MinVersion = %x, want TLS12", cfg2.MinVersion)
@@ -120,5 +120,5 @@ func TestApplyTLSProfile(t *testing.T) {
 
 	// Nil receiver must not panic.
 	var nilCfg *AuthConfig
-	nilCfg.ApplyTLSProfile(&tls.Config{})
+	nilCfg.ApplyTLSProfile(&tls.Config{}) //nolint:gosec // nil-receiver no-op path under test
 }
