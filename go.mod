@@ -1,8 +1,6 @@
 module github.com/redhat-cne/rest-api
 
-go 1.23.0
-
-toolchain go1.24.3
+go 1.25.0
 
 require (
 	github.com/cloudevents/sdk-go/v2 v2.15.2
@@ -12,7 +10,7 @@ require (
 	github.com/redhat-cne/sdk-go v1.23.6
 	github.com/sirupsen/logrus v1.8.3
 	github.com/stretchr/testify v1.8.0
-	golang.org/x/net v0.38.0
+	golang.org/x/net v0.55.0
 )
 
 require (
@@ -37,7 +35,7 @@ require (
 	go.uber.org/zap v1.13.0 // indirect
 	golang.org/x/lint v0.0.0-20200302205851-738671d3881b // indirect
 	golang.org/x/mod v0.3.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/tools v0.0.0-20200825202427-b303f430e36d // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
