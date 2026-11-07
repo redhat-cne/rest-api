@@ -1,8 +1,8 @@
 
 
 
-# O-RAN Compliant REST API
-REST API Spec.
+# O-RAN Compliant REST API with Authentication
+O-RAN compliant REST API for cloud event notifications with mTLS and OAuth 2.0 authentication support. This API provides secure event subscription management, publisher control, and real-time event notifications for OpenShift and Kubernetes environments.
   
 
 ## Informations
@@ -11,15 +11,35 @@ REST API Spec.
 
 2.0.0
 
+### License
+
+[Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+
+### Contact
+
+Red Hat CNE Team  https://github.com/redhat-cne/rest-api
+
 ## Tags
 
   ### <span id="tag-subscriptions"></span>Subscriptions
 
-Manage Subscriptions
+Manage event subscriptions for O-RAN compliant notifications. Includes both O-RAN standard operations and extensions.
+
+  ### <span id="tag-publishers"></span>Publishers
+
+Manage event publishers and their configurations. Extensions to O-RAN API for internal cluster management.
 
   ### <span id="tag-events"></span>Events
 
-Event Pull Status Notification
+Event publication and status notification endpoints. Includes current state retrieval and event creation.
+
+  ### <span id="tag-health-check"></span>HealthCheck
+
+Health and status monitoring endpoints. Extensions to O-RAN API for service availability checking.
+
+  ### <span id="tag-authentication"></span>Authentication
+
+Authentication and authorization using mTLS (mutual TLS) and OAuth 2.0 with OpenShift integration.
 
 ## Content negotiation
 
@@ -32,6 +52,35 @@ Event Pull Status Notification
 
 ### Produces
   * application/json
+
+## Access control
+
+### Security Schemes
+
+#### OAuth2
+
+OAuth 2.0 authentication using Bearer tokens. Supports OpenShift OAuth server and Kubernetes ServiceAccount tokens.
+
+> **Type**: oauth2
+>
+> **Flow**: application
+>
+> **Token URL**: https://oauth-openshift.apps.cluster.local/oauth/token
+      
+
+##### Scopes
+
+Name | Description
+-----|-------------
+user:info | Access to user information
+read | Read access to resources
+write | Write access to resources
+
+#### mTLS
+
+Mutual TLS authentication using client certificates. Clients must present valid certificates signed by the trusted CA.
+
+> **Type**: basic
 
 ## All endpoints
 
@@ -81,6 +130,10 @@ POST /api/ocloudNotifications/v2/subscriptions
 
 Creates a new subscription for the required event by passing the appropriate payload.
 
+#### Security Requirements
+  * mTLS
+  * OAuth2: write
+
 #### Parameters
 
 | Name | Source | Type | Go type | Separator | Required | Default | Description |
@@ -92,6 +145,7 @@ Creates a new subscription for the required event by passing the appropriate pay
 |------|--------|-------------|:-----------:|--------|
 | [201](#create-subscription-201) | Created | Shall be returned when the subscription resource is created successfully. |  | [schema](#create-subscription-201-schema) |
 | [400](#create-subscription-400) | Bad Request | Bad request. For example, the endpoint URI is not correctly formatted. |  | [schema](#create-subscription-400-schema) |
+| [401](#create-subscription-401) | Unauthorized | Unauthorized. Authentication required (mTLS and/or OAuth). |  | [schema](#create-subscription-401-schema) |
 | [404](#create-subscription-404) | Not Found | Not Found. Subscription resource is not available. |  | [schema](#create-subscription-404-schema) |
 | [409](#create-subscription-409) | Conflict | Conflict. The subscription resource already exists. |  | [schema](#create-subscription-409-schema) |
 
@@ -112,6 +166,11 @@ Status: Bad Request
 
 ###### <span id="create-subscription-400-schema"></span> Schema
 
+##### <span id="create-subscription-401"></span> 401 - Unauthorized. Authentication required (mTLS and/or OAuth).
+Status: Unauthorized
+
+###### <span id="create-subscription-401-schema"></span> Schema
+
 ##### <span id="create-subscription-404"></span> 404 - Not Found. Subscription resource is not available.
 Status: Not Found
 
@@ -130,10 +189,15 @@ DELETE /api/ocloudNotifications/v2/subscriptions
 
 Delete all subscriptions.
 
+#### Security Requirements
+  * mTLS
+  * OAuth2: write
+
 #### All responses
 | Code | Status | Description | Has headers | Schema |
 |------|--------|-------------|:-----------:|--------|
 | [204](#delete-all-subscriptions-204) | No Content | Deleted all subscriptions. |  | [schema](#delete-all-subscriptions-204-schema) |
+| [401](#delete-all-subscriptions-401) | Unauthorized | Unauthorized. Authentication required (mTLS and/or OAuth). |  | [schema](#delete-all-subscriptions-401-schema) |
 
 #### Responses
 
@@ -143,6 +207,11 @@ Status: No Content
 
 ###### <span id="delete-all-subscriptions-204-schema"></span> Schema
 
+##### <span id="delete-all-subscriptions-401"></span> 401 - Unauthorized. Authentication required (mTLS and/or OAuth).
+Status: Unauthorized
+
+###### <span id="delete-all-subscriptions-401-schema"></span> Schema
+
 ### <span id="delete-subscription"></span> Delete a specific subscription. (*deleteSubscription*)
 
 ```
@@ -150,6 +219,10 @@ DELETE /api/ocloudNotifications/v2/subscriptions/{subscriptionId}
 ```
 
 Deletes an individual subscription resource object and its associated properties.
+
+#### Security Requirements
+  * mTLS
+  * OAuth2: write
 
 #### Parameters
 
@@ -161,6 +234,7 @@ Deletes an individual subscription resource object and its associated properties
 | Code | Status | Description | Has headers | Schema |
 |------|--------|-------------|:-----------:|--------|
 | [204](#delete-subscription-204) | No Content | Success. |  | [schema](#delete-subscription-204-schema) |
+| [401](#delete-subscription-401) | Unauthorized | Unauthorized. Authentication required (mTLS and/or OAuth). |  | [schema](#delete-subscription-401-schema) |
 | [404](#delete-subscription-404) | Not Found | Not Found. Subscription resources are not available (not created). |  | [schema](#delete-subscription-404-schema) |
 
 #### Responses
@@ -170,6 +244,11 @@ Deletes an individual subscription resource object and its associated properties
 Status: No Content
 
 ###### <span id="delete-subscription-204-schema"></span> Schema
+
+##### <span id="delete-subscription-401"></span> 401 - Unauthorized. Authentication required (mTLS and/or OAuth).
+Status: Unauthorized
+
+###### <span id="delete-subscription-401-schema"></span> Schema
 
 ##### <span id="delete-subscription-404"></span> 404 - Not Found. Subscription resources are not available (not created).
 Status: Not Found
@@ -403,7 +482,7 @@ Example:
 |------|------|---------|:--------:| ------- |-------------|---------|
 | DataType | string| `string` |  | | Type of value object. ( notification | metric) | `notification` |
 | Resource | string| `string` |  | | The resource address specifies the Event Producer with a hierarchical path. Currently hierarchical paths with wild cards are not supported. | `/east-edge-10/Node3/sync/sync-status/sync-state` |
-| Value | [interface{}](#interface)| `interface{}` |  | | value in value_type format. | `HOLDOVER` |
+| Value | [any](#any)| `any` |  | | value in value_type format. | `HOLDOVER` |
 | ValueType | string| `string` |  | | The type format of the value property. | `enumeration` |
 
 
