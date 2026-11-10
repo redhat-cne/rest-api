@@ -1,0 +1,14 @@
+{
+  "enableMTLS": true,
+  "caCertPath": "/etc/certs/ca.crt",
+  "serverCertPath": "/etc/certs/server.crt",
+  "serverKeyPath": "/etc/certs/server.key",
+
+  "enableOAuth": true,
+  "requiredAudiences": ["https://kubernetes.default.svc"],
+  "serviceAccountName": "cloud-event-proxy-sa",
+  "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token",
+
+  "tlsMinVersion": "VersionTLS12",
+  "tlsCipherSuites": []
+}
