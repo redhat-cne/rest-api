@@ -91,7 +91,7 @@ func init() {
 }
 
 func TestMain(m *testing.M) {
-	server = restapi.InitServer(port, apHost, apPath, storePath, eventOutCh, closeCh, onReceiveOverrideFn)
+	server = restapi.InitServer(port, apHost, apPath, storePath, eventOutCh, closeCh, onReceiveOverrideFn, restapi.WithBindHost("127.0.0.1"))
 	//start http server
 	server.Start()
 

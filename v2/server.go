@@ -34,6 +34,8 @@ package restapi
 
 import (
 	"fmt"
+	"net"
+	"strconv"
 
 	"github.com/redhat-cne/sdk-go/pkg/util/wait"
 
@@ -77,9 +79,11 @@ const (
 
 // Server defines rest routes server object
 type Server struct {
-	port    int
-	apiHost string
-	apiPath string
+	port int
+	// bindHost is the listen IP. Empty means all interfaces.
+	bindHost string
+	apiHost  string
+	apiPath  string
 	//use dataOut chanel to write to configMap
 	dataOut                 chan<- *channel.DataChan
 	closeCh                 <-chan struct{}
@@ -212,10 +216,21 @@ type swaggEventData struct { //nolint:deadcode,unused
 	Body EventData
 }
 
+// ServerOption sets an optional configuration on the Server
+type ServerOption func(*Server)
+
+// WithBindHost sets the IP address that the server listens on
+func WithBindHost(host string) ServerOption {
+	return func(s *Server) {
+		s.bindHost = host
+	}
+}
+
 // InitServer is used to supply configurations for rest routes server
 func InitServer(port int, apiHost, apiPath, storePath string,
 	dataOut chan<- *channel.DataChan, closeCh <-chan struct{},
-	onStatusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error) *Server {
+	onStatusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error,
+	opts ...ServerOption) *Server {
 	once.Do(func() {
 		ServerInstance = &Server{
 			port:    port,
@@ -233,6 +248,9 @@ func InitServer(port int, apiHost, apiPath, storePath string,
 			pubSubAPI:               pubsubv1.GetAPIInstance(storePath),
 			subscriberAPI:           subscriberApi.GetAPIInstance(storePath),
 			statusReceiveOverrideFn: onStatusReceiveOverrideFn,
+		}
+		for _, opt := range opts {
+			opt(ServerInstance)
 		}
 	})
 	// singleton
@@ -299,7 +317,11 @@ func (s *Server) GetStatus() ServerStatus {
 
 // GetHostPath  returns hostpath
 func (s *Server) GetHostPath() *types.URI {
-	return types.ParseURI(fmt.Sprintf("http://localhost:%d%s", s.port, s.apiPath))
+	host := s.bindHost
+	if host == "" {
+		host = "localhost"
+	}
+	return types.ParseURI(fmt.Sprintf("http://%s%s", net.JoinHostPort(host, strconv.Itoa(s.port)), s.apiPath))
 }
 
 // Start will start res routes service
@@ -496,12 +518,13 @@ func (s *Server) Start() {
 		fmt.Fprintln(w, r)
 	})
 
-	log.Infof("starting v2 rest api server at port %d, endpoint %s", s.port, s.apiPath)
+	addr := net.JoinHostPort(s.bindHost, strconv.Itoa(s.port))
+	log.Infof("starting v2 rest api server at %s, endpoint %s", addr, s.apiPath)
 	go wait.Until(func() {
 		s.SetStatus(started)
 		s.httpServer = &http.Server{
 			ReadHeaderTimeout: HTTPReadHeaderTimeout,
-			Addr:              fmt.Sprintf(":%d", s.port),
+			Addr:              addr,
 			Handler:           api,
 		}
 		err := s.httpServer.ListenAndServe()
